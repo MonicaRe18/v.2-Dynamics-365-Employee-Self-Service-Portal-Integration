@@ -12,7 +12,7 @@
  */
 
 import { INITIAL_TEAM_MEMBERS } from '../data/teamData';
-import { signAuthToken, verifyAuthToken, TokenPayload } from '../utils/securityUtils';
+import { signAuthToken, verifyAuthToken, clearRuntimeSecret, TokenPayload } from '../utils/securityUtils';
 
 export type D365SecurityRole =
   | 'ESS_USER'       // Employee Self-Service User (الموظف)
@@ -248,53 +248,6 @@ export class AuthenticationService {
   }
 
   /**
-   * Recreates/refreshes session for an already authenticated user
-   * Strictly requires an active verified session; never creates a session out of thin air.
-   */
-  public refreshDemoSession(): AuthSession | null {
-    if (!this.isAuthenticated() || !this.currentUser) {
-      return null;
-    }
-
-    const targetUser = this.currentUser;
-    const token = signAuthToken(
-      {
-        sub: targetUser.id,
-        civilId: targetUser.civilId,
-        name: targetUser.name,
-        role: targetUser.role,
-        roles: targetUser.roles,
-      },
-      SESSION_EXPIRATION_MINUTES
-    );
-
-    const verification = verifyAuthToken(token);
-    const session: AuthSession = {
-      token,
-      civilId: targetUser.civilId,
-      userId: targetUser.id,
-      userName: targetUser.name,
-      role: targetUser.role,
-      roles: [...targetUser.roles],
-      issuedAt: verification.payload?.iat || Date.now(),
-      expiresAt: verification.payload?.exp || Date.now() + SESSION_EXPIRATION_MINUTES * 60 * 1000,
-    };
-
-    this.activeVerifiedTokens.add(token);
-    this.currentSession = session;
-
-    try {
-      if (typeof window !== 'undefined' && window.sessionStorage) {
-        sessionStorage.setItem(SECURE_TOKEN_STORAGE_KEY, token);
-      }
-    } catch {
-      // ignore
-    }
-
-    return session;
-  }
-
-  /**
    * Restores and cryptographically validates the token from sessionStorage
    * No auto-login or default authenticated state allowed.
    */
@@ -482,10 +435,14 @@ export class AuthenticationService {
   private clearSessionData(): void {
     this.currentUser = null;
     this.currentSession = null;
+    this.activeVerifiedTokens.clear();
     this.cleanLegacyFlags();
+    clearRuntimeSecret();
     try {
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
         sessionStorage.removeItem(SECURE_TOKEN_STORAGE_KEY);
+        sessionStorage.removeItem('d365_is_authenticated');
+        sessionStorage.removeItem('__d365_sec_rk__');
       }
     } catch {
       // Ignore

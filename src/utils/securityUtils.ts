@@ -37,6 +37,17 @@ function getRuntimeSecret(): string {
   return RUNTIME_SECRET_KEY;
 }
 
+export function clearRuntimeSecret(): void {
+  RUNTIME_SECRET_KEY = '';
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      sessionStorage.removeItem('__d365_sec_rk__');
+    }
+  } catch {
+    // Ignore
+  }
+}
+
 // Pure standard SHA-256 implementation
 function sha256(ascii: string): string {
   function rightRotate(value: number, amount: number) {

@@ -156,13 +156,15 @@ export default function App() {
 
   // Browser popstate listener for back/forward navigation
   useEffect(() => {
-    const handlePopState = () => {
+    const enforceRouting = () => {
       const p = window.location.pathname || '/';
       const isAuth = authService.isAuthenticated();
+      setIsAuthenticated(isAuth);
       if (!isAuth) {
         if (p !== '/' && p !== '/login') {
           window.history.replaceState({}, '', '/');
           setCurrentPath('/');
+          setActiveModule('dashboard');
           return;
         }
       } else {
@@ -177,8 +179,11 @@ export default function App() {
       setActiveModule(getModuleFromPath(p));
     };
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    // Check immediately on mount
+    enforceRouting();
+
+    window.addEventListener('popstate', enforceRouting);
+    return () => window.removeEventListener('popstate', enforceRouting);
   }, []);
 
   // Sync state with authentication service and D365 service subscribers

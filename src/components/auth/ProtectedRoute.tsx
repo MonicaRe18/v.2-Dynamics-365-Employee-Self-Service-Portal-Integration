@@ -24,28 +24,18 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const currentSession = authService.getCurrentSession() || tokenState.session;
   const activeUser = authService.getCurrentUser() || currentUser || tokenState.user;
 
+  React.useEffect(() => {
+    if (!tokenState.isValid || !authService.isAuthenticated()) {
+      authService.logout(tokenState.isExpired ? 'EXPIRED' : 'LOGOUT');
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', '/');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    }
+  }, [tokenState.isValid]);
+
   if (!tokenState.isValid || (!tokenState.user && !activeUser) || !authService.isAuthenticated()) {
-    return (
-      <div className="min-h-[500px] flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white border border-red-200 rounded-xl shadow-lg p-6 text-center">
-          <div className="w-14 h-14 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
-            <Lock className="w-7 h-7" />
-          </div>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">جلسة غير مصرح بها</h2>
-          <p className="text-xs text-gray-600 mb-4 leading-relaxed">
-            {tokenState.isExpired
-              ? 'انتهت صلاحية رمز الجلسة الأمنية (Token Expired). يرجى إعادة تسجيل الدخول لمتابعة العمل.'
-              : 'تم رفض الوصول لعدم وجود رمز أمان مصدق. لا يمكن الوصول عبر تعديل التخزين المحلي (localStorage).'}
-          </p>
-          <button
-            onClick={() => authService.logout(tokenState.isExpired ? 'EXPIRED' : 'TAMPER_DETECTED')}
-            className="w-full py-2.5 px-4 bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold text-xs rounded-lg transition-colors shadow-xs"
-          >
-            العودة إلى شاشة تسجيل الدخول
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // 2. Check role and permission for the specific module using roles array
