@@ -248,25 +248,22 @@ export class AuthenticationService {
   }
 
   /**
-   * Recreates/refreshes the demo session for National ID 28509180102934 (EMP-10492)
-   * Storing BOTH ESS_USER and MSS_MGR roles in session and cryptographically signed token
+   * Recreates/refreshes session for an already authenticated user
+   * Strictly requires an active verified session; never creates a session out of thin air.
    */
   public refreshDemoSession(): AuthSession | null {
-    const demoUser = this.registeredUsers.find(
-      (u) => u.civilId === '28509180102934' || u.id === 'EMP-10492'
-    );
-    if (!demoUser) return null;
+    if (!this.isAuthenticated() || !this.currentUser) {
+      return null;
+    }
 
-    demoUser.role = 'MSS_MGR';
-    demoUser.roles = ['ESS_USER', 'MSS_MGR'];
-
+    const targetUser = this.currentUser;
     const token = signAuthToken(
       {
-        sub: demoUser.id,
-        civilId: demoUser.civilId,
-        name: demoUser.name,
-        role: demoUser.role,
-        roles: demoUser.roles,
+        sub: targetUser.id,
+        civilId: targetUser.civilId,
+        name: targetUser.name,
+        role: targetUser.role,
+        roles: targetUser.roles,
       },
       SESSION_EXPIRATION_MINUTES
     );
@@ -274,17 +271,16 @@ export class AuthenticationService {
     const verification = verifyAuthToken(token);
     const session: AuthSession = {
       token,
-      civilId: demoUser.civilId,
-      userId: demoUser.id,
-      userName: demoUser.name,
-      role: demoUser.role,
-      roles: [...demoUser.roles],
+      civilId: targetUser.civilId,
+      userId: targetUser.id,
+      userName: targetUser.name,
+      role: targetUser.role,
+      roles: [...targetUser.roles],
       issuedAt: verification.payload?.iat || Date.now(),
       expiresAt: verification.payload?.exp || Date.now() + SESSION_EXPIRATION_MINUTES * 60 * 1000,
     };
 
     this.activeVerifiedTokens.add(token);
-    this.currentUser = { ...demoUser };
     this.currentSession = session;
 
     try {
@@ -300,6 +296,7 @@ export class AuthenticationService {
 
   /**
    * Restores and cryptographically validates the token from sessionStorage
+   * No auto-login or default authenticated state allowed.
    */
   private restoreAndVerifyTokenSession(): void {
     this.cleanLegacyFlags();
@@ -309,21 +306,13 @@ export class AuthenticationService {
 
       const storedToken = sessionStorage.getItem(SECURE_TOKEN_STORAGE_KEY);
       if (!storedToken) {
-        // Demo Mode Initialization: Automatically establish session for the primary demo user (28509180102934)
-        // with both ESS_USER and MSS_MGR roles so demo reviewers have immediate access.
-        this.refreshDemoSession();
+        this.clearSessionData();
         return;
       }
 
       // Cryptographic verification with HMAC-SHA256 signature check
       const verification = verifyAuthToken(storedToken);
       if (!verification.valid || !verification.payload) {
-        // If verification failed (e.g. key rotation or fresh browser session), initialize fresh demo session
-        const defaultUser = this.registeredUsers.find((u) => u.civilId === '28509180102934');
-        if (defaultUser) {
-          this.refreshDemoSession();
-          return;
-        }
         this.clearSessionData();
         return;
       }
@@ -338,16 +327,6 @@ export class AuthenticationService {
       if (!verifiedUser) {
         this.clearSessionData();
         return;
-      }
-
-      // Guarantee demo user has both roles and refresh if token had outdated payload
-      if (verifiedUser.civilId === '28509180102934' || verifiedUser.id === 'EMP-10492') {
-        verifiedUser.role = 'MSS_MGR';
-        verifiedUser.roles = ['ESS_USER', 'MSS_MGR'];
-        if (!payload.roles || !payload.roles.includes('MSS_MGR')) {
-          this.refreshDemoSession();
-          return;
-        }
       }
 
       // Restore valid session with updated RBAC roles
@@ -432,22 +411,6 @@ export class AuthenticationService {
     if (foundUser.civilId === '28509180102934' || foundUser.id === 'EMP-10492') {
       foundUser.role = 'MSS_MGR';
       foundUser.roles = ['ESS_USER', 'MSS_MGR'];
-      const demoSession = this.refreshDemoSession();
-      if (demoSession) {
-        if (rememberMe) {
-          try {
-            localStorage.setItem(REMEMBERED_CARD_KEY, foundUser.civilId);
-          } catch {
-            // ignore
-          }
-        }
-        this.notify('LOGIN');
-        return {
-          success: true,
-          user: { ...foundUser },
-          session: demoSession,
-        };
-      }
     }
 
     // 3. Issue HMAC-SHA256 cryptographically signed token with RBAC roles

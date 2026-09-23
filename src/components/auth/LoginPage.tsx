@@ -18,12 +18,12 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({
   onLoginSuccess,
-  defaultCardId = '28509180102934',
+  defaultCardId = '',
 }) => {
-  const [username, setUsername] = useState(defaultCardId);
+  const [username, setUsername] = useState(() => defaultCardId || authService.getRememberedCardId() || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(() => !!authService.getRememberedCardId());
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);

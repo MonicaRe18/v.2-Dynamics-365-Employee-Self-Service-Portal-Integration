@@ -60,6 +60,14 @@ import {
 
 type ActiveModule = 'dashboard' | 'team' | 'leave-balance' | 'penalties' | 'training';
 
+function getModuleFromPath(path: string): ActiveModule {
+  if (path.startsWith('/team')) return 'team';
+  if (path.startsWith('/leave-balance')) return 'leave-balance';
+  if (path.startsWith('/penalties')) return 'penalties';
+  if (path.startsWith('/training')) return 'training';
+  return 'dashboard';
+}
+
 export default function App() {
   // Authentication State governed by central Authentication Service
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -69,7 +77,27 @@ export default function App() {
     return authService.getCurrentUser();
   });
   const [authenticatedCardId, setAuthenticatedCardId] = useState<string>(() => {
-    return authService.getCurrentUser()?.civilId || authService.getRememberedCardId() || '28509180102934';
+    return authService.getCurrentUser()?.civilId || authService.getRememberedCardId() || '';
+  });
+
+  // URL Routing State: "/" opens Login, "/dashboard" and portal routes are protected
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname || '/';
+      const isAuth = authService.isAuthenticated();
+      // If user is authenticated and lands on "/" or "/login", redirect to "/dashboard"
+      if (isAuth && (p === '/' || p === '/login')) {
+        window.history.replaceState({}, '', '/dashboard');
+        return '/dashboard';
+      }
+      // If user is not authenticated and lands on protected route, redirect to "/" (Login)
+      if (!isAuth && p !== '/' && p !== '/login') {
+        window.history.replaceState({}, '', '/');
+        return '/';
+      }
+      return p;
+    }
+    return '/';
   });
 
   // Service Data State
@@ -93,10 +121,15 @@ export default function App() {
     d365Service.getUnifiedRequests()
   );
 
-  // Active View Module
-  const [activeModule, setActiveModule] = useState<ActiveModule>('dashboard');
+  // Active View Module derived from current URL
+  const [activeModule, setActiveModule] = useState<ActiveModule>(() => {
+    if (typeof window !== 'undefined') {
+      return getModuleFromPath(window.location.pathname || '/');
+    }
+    return 'dashboard';
+  });
 
-  // Dialogs State
+  // Dialogs and Notification State
   const [isLeaveBalanceDialogOpen, setIsLeaveBalanceDialogOpen] = useState(false);
   const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
   const [isPenaltiesDialogOpen, setIsPenaltiesDialogOpen] = useState(false);
@@ -105,10 +138,48 @@ export default function App() {
   const [isMonitoringDialogOpen, setIsMonitoringDialogOpen] = useState(false);
   const [monitoringMode, setMonitoringMode] = useState<'records' | 'disclosure' | 'test'>('records');
   const [activeQuickAction, setActiveQuickAction] = useState<QuickActionType | null>(null);
-
   const [initialLeaveTypeForDialog, setInitialLeaveTypeForDialog] = useState<LeaveTypeCode>('ANNUAL');
   const [isODataInspectorOpen, setIsODataInspectorOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const navigate = (toPath: string, replace = false) => {
+    if (typeof window !== 'undefined') {
+      if (replace) {
+        window.history.replaceState({}, '', toPath);
+      } else {
+        window.history.pushState({}, '', toPath);
+      }
+    }
+    setCurrentPath(toPath);
+    setActiveModule(getModuleFromPath(toPath));
+  };
+
+  // Browser popstate listener for back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const p = window.location.pathname || '/';
+      const isAuth = authService.isAuthenticated();
+      if (!isAuth) {
+        if (p !== '/' && p !== '/login') {
+          window.history.replaceState({}, '', '/');
+          setCurrentPath('/');
+          return;
+        }
+      } else {
+        if (p === '/' || p === '/login') {
+          window.history.replaceState({}, '', '/dashboard');
+          setCurrentPath('/dashboard');
+          setActiveModule('dashboard');
+          return;
+        }
+      }
+      setCurrentPath(p);
+      setActiveModule(getModuleFromPath(p));
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Sync state with authentication service and D365 service subscribers
   useEffect(() => {
@@ -141,6 +212,7 @@ export default function App() {
           phone: user.phone || '+20 10 1234 5678',
         });
       } else {
+        navigate('/', true);
         if (reason === 'EXPIRED') {
           showToast('انتهت صلاحية الجلسة لأسباب أمنية. يرجى تسجيل الدخول مجدداً.');
         } else if (reason === 'TAMPER_DETECTED') {
@@ -171,10 +243,6 @@ export default function App() {
   };
 
   const handleLoginSuccess = (cardId: string, user?: RegisteredUser) => {
-    // Refresh/recreate the demo session after login so the new roles are stored correctly
-    if (cardId === '28509180102934' || user?.civilId === '28509180102934' || user?.id === 'EMP-10492') {
-      authService.refreshDemoSession();
-    }
     const activeUser = authService.getCurrentUser() || user;
     setIsAuthenticated(authService.isAuthenticated());
     if (activeUser) {
@@ -189,13 +257,15 @@ export default function App() {
         phone: activeUser.phone || '+20 10 1234 5678',
       });
     }
+    navigate('/dashboard');
     showToast('تم تسجيل الدخول بنجاح عبر خدمة التحقق الأمني. مرحباً بك في بوابة Microsoft Dynamics 365.');
   };
 
   const handleLogout = () => {
-    authService.logout();
+    authService.logout('LOGOUT');
     setIsAuthenticated(false);
     setCurrentUser(null);
+    navigate('/', true);
     showToast('تم تسجيل الخروج بنجاح.');
   };
 
@@ -293,8 +363,8 @@ export default function App() {
     }
   };
 
-  // If user is not logged in, render the Enterprise Login Page
-  if (!isAuthenticated) {
+  // If user is not logged in or route is login, render the Enterprise Login Page
+  if (!isAuthenticated || currentPath === '/' || currentPath === '/login') {
     return (
       <LoginPage
         onLoginSuccess={handleLoginSuccess}
@@ -335,7 +405,7 @@ export default function App() {
         <D365Tabs
           tabs={navigationTabs}
           activeTabId={activeModule}
-          onTabChange={(id) => setActiveModule(id as ActiveModule)}
+          onTabChange={(id) => navigate(`/${id}`)}
         />
       </nav>
 
@@ -346,7 +416,7 @@ export default function App() {
             module="dashboard"
             title="لوحة معلومات الموظف (Dashboard)"
             currentUser={currentUser}
-            onNavigateHome={() => setActiveModule('dashboard')}
+            onNavigateHome={() => navigate('/dashboard')}
           >
             <EmployeeDashboardView
               employee={employee}
@@ -369,7 +439,7 @@ export default function App() {
               onQuickAction={(actionType) => setActiveQuickAction(actionType)}
               onRefresh={handleRefresh}
               onExportExcel={handleExportExcel}
-              onNavigateToTeam={() => setActiveModule('team')}
+              onNavigateToTeam={() => navigate('/team')}
             />
           </ProtectedRoute>
         )}
@@ -380,7 +450,7 @@ export default function App() {
             title="معلومات فريقي (My team)"
             requiredRole="MSS_MGR"
             currentUser={currentUser}
-            onNavigateHome={() => setActiveModule('dashboard')}
+            onNavigateHome={() => navigate('/dashboard')}
           >
             <MyTeamView
               teamMembers={teamMembers}
@@ -403,7 +473,7 @@ export default function App() {
             module="leave-balance"
             title="أرصدة الإجازات"
             currentUser={currentUser}
-            onNavigateHome={() => setActiveModule('dashboard')}
+            onNavigateHome={() => navigate('/dashboard')}
           >
             <LeaveBalanceView
               leaveBalances={leaveBalances}
@@ -419,7 +489,7 @@ export default function App() {
             module="penalties"
             title="الجزاءات والعقوبات"
             currentUser={currentUser}
-            onNavigateHome={() => setActiveModule('dashboard')}
+            onNavigateHome={() => navigate('/dashboard')}
           >
             <PenaltiesView
               penalties={penalties}
@@ -437,7 +507,7 @@ export default function App() {
             module="training"
             title="الدورات التدريبية"
             currentUser={currentUser}
-            onNavigateHome={() => setActiveModule('dashboard')}
+            onNavigateHome={() => navigate('/dashboard')}
           >
             <TrainingCoursesView
               courses={trainingCourses}

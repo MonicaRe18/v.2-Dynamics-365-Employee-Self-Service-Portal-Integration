@@ -20,24 +20,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   currentUser,
 }) => {
   // 1. Verify token cryptographic validity and session state
-  let tokenState = authService.verifyCurrentToken();
+  const tokenState = authService.verifyCurrentToken();
   const currentSession = authService.getCurrentSession() || tokenState.session;
   const activeUser = authService.getCurrentUser() || currentUser || tokenState.user;
 
-  // Auto-refresh demo session if needed for demo user 28509180102934 / EMP-10492
-  if (
-    activeUser?.civilId === '28509180102934' ||
-    activeUser?.id === 'EMP-10492' ||
-    currentUser?.civilId === '28509180102934' ||
-    currentUser?.id === 'EMP-10492'
-  ) {
-    if (!tokenState.isValid || !tokenState.user || !activeUser?.roles?.includes('MSS_MGR')) {
-      authService.refreshDemoSession();
-      tokenState = authService.verifyCurrentToken();
-    }
-  }
-
-  if (!tokenState.isValid || (!tokenState.user && !activeUser)) {
+  if (!tokenState.isValid || (!tokenState.user && !activeUser) || !authService.isAuthenticated()) {
     return (
       <div className="min-h-[500px] flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-white border border-red-200 rounded-xl shadow-lg p-6 text-center">
