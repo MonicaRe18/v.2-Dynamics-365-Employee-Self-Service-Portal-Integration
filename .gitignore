@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+/backend/obj
+/backend/bin/Debug/net8.0
