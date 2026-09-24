@@ -4,6 +4,7 @@
  */
 
 import { apiClient, ApiResponse } from './apiClient';
+import { authService } from '../authService';
 import {
   Employee,
   PerformanceEvaluation,
@@ -18,8 +19,10 @@ export class EmployeeApi {
    * Fetches employee profile by personnel number or current authenticated worker
    * D365 OData: GET /data/Employees(WorkerPersonnelNumber='{id}')
    */
-  public async getEmployee(personnelNumber: string = 'EMP-10492'): Promise<ApiResponse<Employee>> {
-    return apiClient.get<Employee>(`/employees/${encodeURIComponent(personnelNumber)}`);
+  public async getEmployee(personnelNumber?: string): Promise<ApiResponse<Employee>> {
+    const id = personnelNumber || authService.getCurrentUser()?.id || '';
+    const endpoint = id ? `/employees/${encodeURIComponent(id)}` : '/employee';
+    return apiClient.get<Employee>(endpoint);
   }
 
   /**
@@ -38,22 +41,22 @@ export class EmployeeApi {
    * D365 OData: GET /data/HcmPerformanceGoals?$filter=WorkerPersonnelNumber eq '{id}'
    */
   public async getPerformanceEvaluations(
-    personnelNumber: string = 'EMP-10492'
+    personnelNumber?: string
   ): Promise<ApiResponse<PerformanceEvaluation[]>> {
-    return apiClient.get<PerformanceEvaluation[]>(
-      `/performance-evaluations?workerId=${encodeURIComponent(personnelNumber)}`
-    );
+    const id = personnelNumber || authService.getCurrentUser()?.id || '';
+    const query = id ? `?workerId=${encodeURIComponent(id)}` : '';
+    return apiClient.get<PerformanceEvaluation[]>(`/performance-evaluations${query}`);
   }
 
   /**
    * Fetches monitoring & compliance operations (Financial Disclosures & Medical Tests)
    */
   public async getMonitoringOperations(
-    personnelNumber: string = 'EMP-10492'
+    personnelNumber?: string
   ): Promise<ApiResponse<MonitoringOperation[]>> {
-    return apiClient.get<MonitoringOperation[]>(
-      `/monitoring-operations?workerId=${encodeURIComponent(personnelNumber)}`
-    );
+    const id = personnelNumber || authService.getCurrentUser()?.id || '';
+    const query = id ? `?workerId=${encodeURIComponent(id)}` : '';
+    return apiClient.get<MonitoringOperation[]>(`/monitoring-operations${query}`);
   }
 
   /**
@@ -106,11 +109,11 @@ export class EmployeeApi {
    * Fetches notifications
    */
   public async getNotifications(
-    personnelNumber: string = 'EMP-10492'
+    personnelNumber?: string
   ): Promise<ApiResponse<D365Notification[]>> {
-    return apiClient.get<D365Notification[]>(
-      `/notifications?workerId=${encodeURIComponent(personnelNumber)}`
-    );
+    const id = personnelNumber || authService.getCurrentUser()?.id || '';
+    const query = id ? `?workerId=${encodeURIComponent(id)}` : '';
+    return apiClient.get<D365Notification[]>(`/notifications${query}`);
   }
 }
 

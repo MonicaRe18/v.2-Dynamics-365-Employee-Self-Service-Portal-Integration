@@ -17,16 +17,17 @@ export interface EmployeePersonalDetails {
 }
 
 export interface Employee {
-  id: string; // WorkerPersonnelNumber (e.g., 'EMP-10492')
-  name: string; // WorkerName (e.g., 'أحمد محمد عبد الله')
-  jobTitle: string; // JobDescription (e.g., 'مهندس برمجيات أول')
-  department: string; // DepartmentName (e.g., 'الإدارة العامة لتقنية المعلومات')
-  division: string; // Division / Section (e.g., 'قسم تطوير تطبيقات المؤسسة')
-  hireDate: string; // EmploymentStartDate (e.g., '2019-03-15')
+  id: string; // WorkerPersonnelNumber
+  name: string; // WorkerName
+  jobTitle: string; // JobDescription
+  department: string; // DepartmentName
+  division: string; // Division / Section
+  hireDate: string; // EmploymentStartDate
   yearsOfService?: string; // سنوات الخدمة (e.g. '6 سنوات')
   directManager: string; // ReportsToWorkerName (e.g., 'د. سامي فهد العمر')
   jobGrade: string; // CompensationGrade (e.g., 'المرتبة السابعة - الدرجة 3')
-  employmentStatus: 'Active' | 'OnLeave' | 'Terminated'; // EmploymentStatus
+  jobGroup?: string; // PAR_JobType description
+  employmentStatus: string; // Dynamics status, when exposed
   employmentStatusAr: string; // 'على رأس العمل - نشط'
   email: string;
   phone: string;
@@ -46,13 +47,15 @@ export type LeaveTypeCode =
   | 'CHILD_CARE'
   | 'COMPENSATORY'
   | 'HAJJ'
-  | 'BEREAVEMENT';
+  | 'BEREAVEMENT'
+  | 'PTO'
+  | 'VACATION';
 
 export interface LeaveBalance {
   id: string;
   leaveTypeCode: LeaveTypeCode;
   leaveTypeTitle: string; // e.g., 'اجازة اعتيادي'
-  unit: 'أيام' | 'ساعات'; // Unit of measure
+  unit: string; // Unit of measure returned by Dynamics
   currentBalance: number; // Current available balance e.g. 24.00
   allocatedBalance: number; // Annual allocation e.g. 30.00
   consumedBalance: number; // Used this year
@@ -75,6 +78,7 @@ export interface LeaveMovementTransaction {
 export type LeaveRequestStatus = 'Draft' | 'Submitted' | 'InReview' | 'Approved' | 'Rejected' | 'Canceled';
 
 export interface LeaveRequest {
+  saveAsDraft?: boolean;
   id: string; // RequestId e.g., 'LR-2026-089'
   employeeId: string;
   employeeName: string;
@@ -392,10 +396,14 @@ export interface RecentRequest {
   toDate?: string; // إلى تاريخ (e.g. '2026-10-05')
   status: RequestStatusCode;
   statusAr: RequestStatusAr;
-  employeeName: string; // الموظف (e.g. 'هدى فتحي عبد المجيد')
-  employeeId: string; // e.g. 'EMP-10492'
+  employeeName: string;
+  employeeId: string;
   notes?: string;
   details?: string;
   workflowStep?: string;
 }
 
+export interface UnifiedRequestItem extends RecentRequest {
+  id: string;
+  referenceNumber?: string;
+}

@@ -37,10 +37,22 @@ export const LeaveBalanceDialog: React.FC<LeaveBalanceDialogProps> = ({
   const [activeMainTab, setActiveMainTab] = useState<'BALANCES' | 'APPROVED_DAYS' | 'SUBMITTED_REQUESTS'>('BALANCES');
   const [asOfDate, setAsOfDate] = useState<string>('2025-09-18');
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [selectedBalanceRow, setSelectedBalanceRow] = useState<LeaveBalance | null>(leaveBalances[0] || null);
 
   const allRequests = d365Service.getLeaveRequests();
   const approvedRequests = allRequests.filter((r) => r.status === 'Approved');
+
+  const handleSubmitDraft = async (requestId: string) => {
+    if (!window.confirm(`إرسال طلب الإجازة ${requestId} إلى Dynamics؟`)) return;
+    setSubmittingId(requestId);
+    const result = await d365Service.submitSavedLeaveRequest(requestId);
+    setSubmittingId(null);
+    setFeedbackNotice(result.isSuccess
+      ? `تم إرسال الطلب ${requestId}. الحالة: ${result.data?.status || 'يرجى التحديث'}`
+      : result.error || 'تعذر إرسال المسودة.');
+    if (result.isSuccess) onRefresh?.();
+  };
 
   const mainTabs: TabItem[] = [
     {
@@ -210,7 +222,7 @@ export const LeaveBalanceDialog: React.FC<LeaveBalanceDialogProps> = ({
       key: 'submissionDate',
       header: 'تاريخ التقديم',
       width: '110px',
-      render: (row) => <span className="font-mono text-xs text-[#605E5C]">{row.submissionDate}</span>,
+      render: (row) => <span className="font-mono text-xs text-[#605E5C]">{row.submissionDate || 'لم يُقدّم بعد'}</span>,
     },
     {
       key: 'startDate',
@@ -246,6 +258,21 @@ export const LeaveBalanceDialog: React.FC<LeaveBalanceDialogProps> = ({
           </span>
         );
       },
+    },
+    {
+      key: 'submitAction',
+      header: 'الإجراء',
+      width: '105px',
+      render: (row) => row.status === 'Draft' ? (
+        <button
+          type="button"
+          disabled={submittingId !== null}
+          onClick={(event) => { event.stopPropagation(); void handleSubmitDraft(row.id); }}
+          className="px-2 py-1 bg-[#0078D4] text-white text-xs font-semibold disabled:opacity-50"
+        >
+          {submittingId === row.id ? 'جارٍ الإرسال...' : 'إرسال المسودة'}
+        </button>
+      ) : <span className="text-xs text-[#605E5C]">—</span>,
     },
   ];
 

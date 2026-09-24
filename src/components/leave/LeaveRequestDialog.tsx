@@ -14,6 +14,7 @@ import {
 import { D365Dialog } from '../common/D365Dialog';
 import { LeaveBalance, DelegatedEmployee, LeaveTypeCode } from '../../types/d365.types';
 import { d365Service } from '../../services/d365Service';
+import { authService } from '../../services/authService';
 
 interface LeaveRequestDialogProps {
   isOpen: boolean;
@@ -36,19 +37,12 @@ export const LeaveRequestDialog: React.FC<LeaveRequestDialogProps> = ({
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [delegatedEmployeeId, setDelegatedEmployeeId] = useState(
-    delegatedEmployees[0]?.id || 'EMP-10001'
+    ''
   );
   const [socialInsuranceOption, setSocialInsuranceOption] = useState<string>('yes');
   const [takafulFundOption, setTakafulFundOption] = useState<string>('yes');
   const [notes, setNotes] = useState('');
-  const [attachments, setAttachments] = useState<Array<{ id: string; fileName: string; fileType: string; uploadDate: string }>>([
-    {
-      id: 'att-1',
-      fileName: 'نموذج_تسليم_المهام.pdf',
-      fileType: 'مستند تسليم',
-      uploadDate: '2025-09-18',
-    }
-  ]);
+  const [attachments, setAttachments] = useState<Array<{ id: string; fileName: string; fileType: string; uploadDate: string }>>([]);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(true);
   const [isNotesOpen, setIsNotesOpen] = useState(true);
   const [isBalancesOpen, setIsBalancesOpen] = useState(true);
@@ -57,14 +51,20 @@ export const LeaveRequestDialog: React.FC<LeaveRequestDialogProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setStartDate('2025-09-22');
-      setEndDate('2025-09-26');
+      setStartDate('');
+      setEndDate('');
       setErrorMessage(null);
       if (initialLeaveType) {
         setLeaveTypeCode(initialLeaveType);
       }
     }
   }, [isOpen, initialLeaveType]);
+
+  useEffect(() => {
+    if (!delegatedEmployees.some((employee) => employee.id === delegatedEmployeeId)) {
+      setDelegatedEmployeeId('');
+    }
+  }, [delegatedEmployees, delegatedEmployeeId]);
 
   const selectedBalance = leaveBalances.find((b) => b.leaveTypeCode === leaveTypeCode) || leaveBalances[0];
   const availableBalance = selectedBalance ? selectedBalance.currentBalance : 0;
@@ -74,8 +74,11 @@ export const LeaveRequestDialog: React.FC<LeaveRequestDialogProps> = ({
     const start = new Date(startDate);
     const end = new Date(endDate);
     if (end < start) return 0;
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    let days = 0;
+    for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
+      if (date.getUTCDay() !== 0 && date.getUTCDay() !== 6) days++;
+    }
+    return days;
   };
 
   const requestedDays = calculateDays();
@@ -108,25 +111,47 @@ export const LeaveRequestDialog: React.FC<LeaveRequestDialogProps> = ({
       setErrorMessage('تاريخ الانتهاء يجب ألا يسبق تاريخ البدء.');
       return;
     }
+    if (startDate < new Date().toISOString().slice(0, 10) || requestedDays === 0) {
+      setErrorMessage('اختر تاريخاً حالياً أو مستقبلياً يتضمن يوم عمل واحداً على الأقل.');
+      return;
+    }
+    if (selectedBalance?.unit !== 'Days' && selectedBalance?.unit !== 'أيام') {
+      setErrorMessage('يمكن إرسال أنواع الإجازة المحسوبة بالأيام فقط حالياً.');
+      return;
+    }
+    if (attachments.length > 0) {
+      setErrorMessage('رفع المرفقات إلى Dynamics غير متاح حالياً؛ احذفها قبل الإرسال.');
+      return;
+    }
+    if (socialInsuranceOption !== 'yes' || takafulFundOption !== 'yes') {
+      setErrorMessage('خيارات التأمين غير مرتبطة بـ Dynamics حالياً؛ اتركها على الإعدادات الافتراضية.');
+      return;
+    }
     if (!isDraft && isBalanceExceeded) {
       setErrorMessage(`الرصيد المتاح (${availableBalance}) لا يكفي لتغطية الأيام المطلوبة (${requestedDays}).`);
+      return;
+    }
+    if (!delegatedEmployeeId || !delegatedEmployees.some((employee) => employee.id === delegatedEmployeeId)) {
+      setErrorMessage('يرجى اختيار القائم بالأعمال من القائمة.');
       return;
     }
 
     setIsSubmitting(true);
     setErrorMessage(null);
 
-    const chosenDelegated = delegatedEmployees.find((e) => e.id === delegatedEmployeeId) || delegatedEmployees[0];
+    const chosenDelegated = delegatedEmployees.find((e) => e.id === delegatedEmployeeId);
+    const currentUser = authService.getCurrentUser();
 
     try {
       const response = await d365Service.submitLeaveRequest({
-        employeeId: 'EMP-10492',
-        employeeName: 'هدى فتحي عبد المجيد',
+        employeeId: currentUser?.id || '',
+        employeeName: currentUser?.name || '',
         leaveTypeCode: leaveTypeCode,
         leaveTypeTitle: selectedBalance?.leaveTypeTitle || 'إجازة اعتيادية',
         startDate: startDate,
         endDate: endDate,
         requestedDays: requestedDays,
+        saveAsDraft: isDraft,
         delegatedEmployeeId: chosenDelegated?.id || '',
         delegatedEmployeeName: chosenDelegated?.name || '',
         delegatedEmployeeTitle: chosenDelegated?.jobTitle || '',
@@ -139,7 +164,7 @@ export const LeaveRequestDialog: React.FC<LeaveRequestDialogProps> = ({
           uploadDate: a.uploadDate,
         })),
         notes: notes || (isDraft ? 'مسودة طلب إجازة' : 'طلب إجازة رسمي'),
-        d365SyncStatus: 'Synced',
+        d365SyncStatus: 'Pending',
       });
 
       setIsSubmitting(false);
@@ -160,11 +185,15 @@ export const LeaveRequestDialog: React.FC<LeaveRequestDialogProps> = ({
     <D365Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title="طلب الإجازة لـ هدى فتحي عبد المجيد"
+      title={`طلب الإجازة لـ ${authService.getCurrentUser()?.name || 'الموظف'}`}
       subtitle="بوابة الخدمة الذاتية للعاملين - Microsoft Dynamics 365 Human Resources"
       maxWidth="3xl"
     >
       <div className="space-y-4">
+        <div className="p-2.5 bg-[#FFF4CE] border border-[#E1C24B] text-[#323130] text-xs">
+          رقم القائم بالأعمال يُحفظ مؤقتاً في تعليق الطلب في Dynamics، وليس في حقل WorkerRecive.
+          المرفقات وخيارات التأمين غير مرتبطة حالياً؛ اترك خيارات التأمين على نعم ولا تضف مرفقات.
+        </div>
         {errorMessage && (
           <div className="p-2.5 bg-[#FDF3F2] border border-[#A80000] text-[#A80000] text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -205,6 +234,7 @@ export const LeaveRequestDialog: React.FC<LeaveRequestDialogProps> = ({
                 onChange={(e) => setDelegatedEmployeeId(e.target.value)}
                 className="w-full h-8 px-2 bg-white text-xs text-[#323130] border border-[#8A8886] focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] outline-none"
               >
+                <option value="">{delegatedEmployees.length ? 'اختر القائم بالأعمال' : 'لا يوجد موظفون مؤهلون في نفس الإدارة'}</option>
                 {delegatedEmployees.map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.name} - {e.jobTitle}
@@ -253,6 +283,7 @@ export const LeaveRequestDialog: React.FC<LeaveRequestDialogProps> = ({
               <input
                 id="leaveStartDate"
                 type="date"
+                min={new Date().toISOString().slice(0, 10)}
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="w-full h-8 px-2 bg-white text-xs text-[#323130] border border-[#8A8886] focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] outline-none font-mono"
@@ -267,6 +298,7 @@ export const LeaveRequestDialog: React.FC<LeaveRequestDialogProps> = ({
               <input
                 id="leaveEndDate"
                 type="date"
+                min={startDate || new Date().toISOString().slice(0, 10)}
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="w-full h-8 px-2 bg-white text-xs text-[#323130] border border-[#8A8886] focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] outline-none font-mono"

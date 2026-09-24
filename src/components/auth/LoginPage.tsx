@@ -26,18 +26,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [rememberMe, setRememberMe] = useState(() => !!authService.getRememberedCardId());
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [passwordChangeNotice] = useState(() => {
+    const changed = sessionStorage.getItem('d365_password_changed') === '1';
+    if (changed) sessionStorage.removeItem('d365_password_changed');
+    return changed;
+  });
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
     const cleanUsername = username.trim().replace(/\s/g, '');
 
-    // Execute authentication via the central Authentication Service
+    // Execute authentication via the central Authentication Service and ASP.NET Core Web API
     setIsLoading(true);
-    setTimeout(() => {
-      const authResult = authService.login(cleanUsername, password, rememberMe);
+    try {
+      const authResult = await authService.loginAsync(cleanUsername, password, rememberMe);
       setIsLoading(false);
 
       if (!authResult.success) {
@@ -46,7 +51,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       }
 
       onLoginSuccess(cleanUsername, authResult.user);
-    }, 500);
+    } catch {
+      setIsLoading(false);
+      setErrorMessage('تعذر الاتصال بخدمة المصادقة في ASP.NET Core');
+    }
   };
 
   return (
@@ -412,6 +420,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               </div>
 
               {/* Error Message Alert with Glassmorphism */}
+              {passwordChangeNotice && (
+                <div role="status" className="mb-4 p-3 rounded-xl bg-green-50 border border-green-300 text-green-800 text-xs font-semibold relative z-10">
+                  تم تغيير كلمة المرور بنجاح. سجّل الدخول بكلمة المرور الجديدة.
+                </div>
+              )}
               {errorMessage && (
                 <div 
                   className="mb-4 p-3 rounded-xl text-red-700 text-xs flex items-center gap-2 shadow-sm animate-shake relative z-10"

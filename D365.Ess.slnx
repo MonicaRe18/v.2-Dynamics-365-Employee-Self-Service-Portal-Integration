@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/backend/">
+    <Project Path="backend/D365.Ess.Api.csproj" />
+  </Folder>
+</Solution>

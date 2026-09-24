@@ -42,8 +42,9 @@ import { LoginPage } from './components/auth/LoginPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { d365Service } from './services/d365Service';
 import { authService, RegisteredUser, AuthEventReason } from './services/authService';
+import { D365ConfigurationAlert } from './components/common/D365ConfigurationAlert';
 import { exportToCsv } from './utils/exportUtils';
-import { UnifiedRequestItem } from './data/mockData';
+import { UnifiedRequestItem } from './types/d365.types';
 import {
   Employee,
   LeaveBalance,
@@ -121,6 +122,12 @@ export default function App() {
     d365Service.getUnifiedRequests()
   );
 
+  // Dynamics 365 Real Backend Configuration State
+  const [isD365Configured, setIsD365Configured] = useState(() => d365Service.getIsConfigured());
+  const [missingConfigFields, setMissingConfigFields] = useState<string[]>(() => d365Service.getMissingFields());
+  const [configErrorMessage, setConfigErrorMessage] = useState<string | null>(() => d365Service.getConfigErrorMessage());
+  const [isCheckingConfig, setIsCheckingConfig] = useState(false);
+
   // Active View Module derived from current URL
   const [activeModule, setActiveModule] = useState<ActiveModule>(() => {
     if (typeof window !== 'undefined') {
@@ -189,6 +196,9 @@ export default function App() {
   // Sync state with authentication service and D365 service subscribers
   useEffect(() => {
     const unsubD365 = d365Service.subscribe(() => {
+      setIsD365Configured(d365Service.getIsConfigured());
+      setMissingConfigFields(d365Service.getMissingFields());
+      setConfigErrorMessage(d365Service.getConfigErrorMessage());
       setEmployee(d365Service.getEmployee());
       setLeaveBalances(d365Service.getLeaveBalances());
       setLeaveRequests(d365Service.getLeaveRequests());
@@ -214,7 +224,7 @@ export default function App() {
           jobTitle: user.jobTitle,
           department: user.department,
           email: user.email,
-          phone: user.phone || '+20 10 1234 5678',
+          phone: user.phone || '',
         });
       } else {
         navigate('/', true);
@@ -232,8 +242,25 @@ export default function App() {
     };
   }, []);
 
+  const handleRecheckConfig = async () => {
+    setIsCheckingConfig(true);
+    showToast('جارٍ فحص تكوين Dynamics 365 على خادم ASP.NET Core...');
+    const result = await d365Service.checkConfiguration();
+    setIsCheckingConfig(false);
+    if (result.isConfigured) {
+      showToast('تم التحقق من تكوين Dynamics 365 بنجاح! تم الاتصال بالبيئة.');
+    } else {
+      showToast('تنبيه: التكوين غير مكتمل - ' + (result.missingFields.slice(0, 2).join(', ')));
+    }
+  };
+
   const handleRefresh = async () => {
-    showToast('جاري الاتصال بخدمات Microsoft Dynamics 365 OData...');
+    showToast('جاري الاتصال بخدمات Microsoft Dynamics 365 عبر خادم ASP.NET Core...');
+    const configResult = await d365Service.checkConfiguration();
+    if (!configResult.isConfigured) {
+      showToast('تنبيه: تكوين Dynamics 365 مفقود أو غير مكتمل على الخادم.');
+      return;
+    }
     const syncResult = await d365Service.refreshAll();
     if (syncResult.overall === 'success') {
       showToast('تمت المزامنة بنجاح مع Microsoft Dynamics 365 (200 OK)');
@@ -263,6 +290,7 @@ export default function App() {
       });
     }
     navigate('/dashboard');
+    void d365Service.refreshAll();
     showToast('تم تسجيل الدخول بنجاح عبر خدمة التحقق الأمني. مرحباً بك في بوابة Microsoft Dynamics 365.');
   };
 
@@ -416,6 +444,15 @@ export default function App() {
 
       {/* 3. Main Workspace Canvas (Protected Routes) */}
       <main className="flex-1 p-3 sm:p-4 max-w-7xl w-full mx-auto">
+        {/* Dynamics 365 Real Configuration Missing Alert Banner */}
+        <D365ConfigurationAlert
+          isConfigured={isD365Configured}
+          missingFields={missingConfigFields}
+          errorMessage={configErrorMessage}
+          onRefresh={handleRecheckConfig}
+          isChecking={isCheckingConfig}
+        />
+
         {activeModule === 'dashboard' && (
           <ProtectedRoute
             module="dashboard"
@@ -540,7 +577,7 @@ export default function App() {
         isOpen={isLeaveDialogOpen}
         onClose={() => setIsLeaveDialogOpen(false)}
         onSuccess={(id) => {
-          showToast(`تم إرسال طلب الإجازة بنجاح برقم: ${id}`);
+          showToast(`تم حفظ طلب الإجازة في Dynamics برقم: ${id}`);
         }}
         leaveBalances={leaveBalances}
         delegatedEmployees={delegatedEmployees}

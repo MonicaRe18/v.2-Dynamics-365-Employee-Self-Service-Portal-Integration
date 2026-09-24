@@ -57,17 +57,6 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     roles = [currentUser.role];
   }
 
-  // Demo user: National ID 28509180102934 / EMP-10492 must have BOTH roles: ESS_USER and MSS_MGR
-  if (
-    activeUser?.civilId === '28509180102934' ||
-    activeUser?.id === 'EMP-10492' ||
-    currentUser?.civilId === '28509180102934' ||
-    currentUser?.id === 'EMP-10492'
-  ) {
-    if (!roles.includes('ESS_USER')) roles.push('ESS_USER');
-    if (!roles.includes('MSS_MGR')) roles.push('MSS_MGR');
-  }
-
   // 3. RBAC validation using roles array
   let isAllowed = false;
   let denialReason: string | undefined = undefined;

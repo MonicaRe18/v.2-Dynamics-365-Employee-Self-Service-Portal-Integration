@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Send, CheckCircle2, AlertCircle, FileText, Upload, Calendar, X } from 'lucide-react';
 import { D365Dialog } from '../common/D365Dialog';
 import { d365Service } from '../../services/d365Service';
-import { UnifiedRequestItem } from '../../data/mockData';
+import { UnifiedRequestItem } from '../../types/d365.types';
 
 export type QuickActionType =
   | 'PERMISSION'

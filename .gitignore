@@ -6,5 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
-/backend/obj
-/backend/bin/Debug/net8.0
+*.vsidx
+.vs/
+backend/bin/
+backend/obj/
+backend/out-temp/
+backend/appsettings.Development.json
+backend/*.csproj.user

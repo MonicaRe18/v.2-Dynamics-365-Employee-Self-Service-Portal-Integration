@@ -24,7 +24,7 @@ import {
 import { D365ActionBar } from '../common/D365ActionBar';
 import { D365Dialog } from '../common/D365Dialog';
 import { PersonalDetailsDialog } from './PersonalDetailsDialog';
-import { UnifiedRequestItem } from '../../data/mockData';
+import { UnifiedRequestItem } from '../../types/d365.types';
 import { d365Service } from '../../services/d365Service';
 import {
   Employee,
@@ -86,8 +86,8 @@ export const EmployeeDashboardView: React.FC<EmployeeDashboardViewProps> = ({
     : d365Service.getUnifiedRequests();
 
   // Active annual leave balance
-  const annualBalance = leaveBalances.find((b) => b.leaveTypeCode === 'ANNUAL')?.currentBalance || 24;
-  const activePenaltiesCount = penalties.filter((p) => p.penaltyStatus === 'Active' || p.hearingStatus).length || 1;
+  const annualBalance = leaveBalances.find((b) => b.leaveTypeCode === 'ANNUAL')?.currentBalance ?? 0;
+  const activePenaltiesCount = penalties.filter((p) => p.penaltyStatus === 'Active' || p.hearingStatus).length;
 
   return (
     <div className="space-y-4">
@@ -118,14 +118,14 @@ export const EmployeeDashboardView: React.FC<EmployeeDashboardViewProps> = ({
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-bold text-[#323130]">{employee.name}</h1>
               </div>
-              <div className="mt-1 mb-1">
+              <div className="mt-0.5 mb-1">
                 <button
                   type="button"
                   onClick={() => setIsPersonalDetailsOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-[#0078D4] hover:bg-[#106EBE] active:bg-[#005A9E] text-white text-[11px] font-medium border border-[#0078D4] shadow-xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4] focus-visible:ring-offset-1"
+                  className="inline-flex items-center gap-1 text-xs text-[#0078D4] hover:text-[#106EBE] hover:underline font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078D4]"
                   title="عرض البيانات الشخصية"
                 >
-                  <User className="w-3 h-3 shrink-0" />
+                  <User className="w-3.5 h-3.5 text-[#0078D4]" />
                   <span>البيانات الشخصية</span>
                 </button>
               </div>
@@ -142,11 +142,11 @@ export const EmployeeDashboardView: React.FC<EmployeeDashboardViewProps> = ({
             </div>
             <div className="px-2.5 py-1 bg-[#F5F5F5] border border-[#D1D1D1]">
               <span>سنوات الخدمة: </span>
-              <strong className="text-[#323130] font-mono">{employee.yearsOfService || '6 سنوات'}</strong>
+              <strong className="text-[#323130] font-mono">{employee.yearsOfService || '—'}</strong>
             </div>
             <div className="px-2.5 py-1 bg-[#F5F5F5] border border-[#D1D1D1]">
               <span>حالة الموظف: </span>
-              <strong className="text-[#107C41]">{employee.employmentStatusAr}</strong>
+              <strong className="text-[#107C41]">{employee.employmentStatusAr || '—'}</strong>
             </div>
           </div>
         </div>
@@ -165,12 +165,12 @@ export const EmployeeDashboardView: React.FC<EmployeeDashboardViewProps> = ({
 
           <div className="p-2 bg-[#F9F9F9] border border-[#EDEBE9]">
             <span className="text-[11px] text-[#605E5C] block">حالة الموظف:</span>
-            <strong className="text-[#107C41] block mt-0.5">{employee.employmentStatusAr}</strong>
+            <strong className="text-[#107C41] block mt-0.5">{employee.employmentStatusAr || '—'}</strong>
           </div>
 
           <div className="p-2 bg-[#F9F9F9] border border-[#EDEBE9]">
             <span className="text-[11px] text-[#605E5C] block">سنوات الخدمة:</span>
-            <strong className="text-[#323130] font-mono block mt-0.5">{employee.yearsOfService || '6 سنوات'}</strong>
+            <strong className="text-[#323130] font-mono block mt-0.5">{employee.yearsOfService || '—'}</strong>
           </div>
 
           <div className="p-2 bg-[#F9F9F9] border border-[#EDEBE9]">
@@ -190,17 +190,17 @@ export const EmployeeDashboardView: React.FC<EmployeeDashboardViewProps> = ({
 
           <div className="p-2 bg-[#F9F9F9] border border-[#EDEBE9]">
             <span className="text-[11px] text-[#605E5C] block">المسمى الوظيفي:</span>
-            <strong className="text-[#323130] block mt-0.5">محلل نظم</strong>
+            <strong className="text-[#323130] block mt-0.5">{employee.jobTitle || '—'}</strong>
           </div>
 
           <div className="p-2 bg-[#F9F9F9] border border-[#EDEBE9]">
             <span className="text-[11px] text-[#605E5C] block">المجموعة النوعية:</span>
-            <strong className="text-[#323130] block mt-0.5">{employee.division}</strong>
+            <strong className="text-[#323130] block mt-0.5">{employee.jobGroup || '—'}</strong>
           </div>
 
           <div className="p-2 bg-[#F9F9F9] border border-[#EDEBE9]">
             <span className="text-[11px] text-[#605E5C] block">الرقم القومي:</span>
-            <span className="font-mono text-[#0078D4] block mt-0.5">{employee.civilId || '28509180102934'}</span>
+            <span className="font-mono text-[#0078D4] block mt-0.5">{employee.civilId || '—'}</span>
           </div>
         </div>
       </div>

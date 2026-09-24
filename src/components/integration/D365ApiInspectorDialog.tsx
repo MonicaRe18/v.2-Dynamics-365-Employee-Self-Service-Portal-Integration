@@ -66,14 +66,14 @@ export const D365ApiInspectorDialog: React.FC<D365ApiInspectorDialogProps> = ({
   };
 
   const getEndpointUrl = () => {
-    const base = 'https://contoso.operations.dynamics.com/data';
+    const base = '/api/d365';
     switch (selectedEntity) {
       case 'HcmLeaveRequest':
-        return `${base}/LeaveAndAbsenceRequests`;
+        return `${base}/leave/requests`;
       case 'HcmDisciplinaryGrievance':
-        return `${base}/DisciplinaryGrievances`;
+        return `${base}/penalties/grievances`;
       case 'HcmCourseEvaluation':
-        return `${base}/CourseEvaluations`;
+        return `${base}/training/evaluations`;
     }
   };
 

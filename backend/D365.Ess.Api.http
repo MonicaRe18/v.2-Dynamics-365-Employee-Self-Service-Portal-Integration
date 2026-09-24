@@ -1,0 +1,6 @@
+@D365.Ess.Api_HostAddress = http://localhost:5212
+
+GET {{D365.Ess.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

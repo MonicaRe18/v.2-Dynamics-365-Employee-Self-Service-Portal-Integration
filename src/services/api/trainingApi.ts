@@ -7,6 +7,7 @@
  */
 
 import { apiClient, ApiResponse } from './apiClient';
+import { authService } from '../authService';
 import { TrainingCourse, TrainingEvaluation } from '../../types/d365.types';
 
 export class TrainingApi {
@@ -15,11 +16,11 @@ export class TrainingApi {
    * D365 OData: GET /data/CourseAttendances?$filter=WorkerPersonnelNumber eq '{id}'
    */
   public async getTrainingCourses(
-    personnelNumber: string = 'EMP-10492'
+    personnelNumber?: string
   ): Promise<ApiResponse<TrainingCourse[]>> {
-    return apiClient.get<TrainingCourse[]>(
-      `/training-courses?workerId=${encodeURIComponent(personnelNumber)}`
-    );
+    const id = personnelNumber || authService.getCurrentUser()?.id || '';
+    const query = id ? `?workerId=${encodeURIComponent(id)}` : '';
+    return apiClient.get<TrainingCourse[]>(`/training-courses${query}`);
   }
 
   /**

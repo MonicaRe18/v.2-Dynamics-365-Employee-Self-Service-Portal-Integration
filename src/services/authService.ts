@@ -1,18 +1,13 @@
 /**
  * Microsoft Dynamics 365 Human Resources & Self-Service Portal
- * Enterprise Token-Based Authentication Service (authService)
+ * Enterprise Authentication Service (authService)
  *
- * Implements strict Session/Token Security Architecture:
- * - HMAC-SHA256 Signed Token Verification (prevents manual localStorage tampering)
- * - Removes legacy d365_is_authenticated boolean flags completely
- * - Token Expiration tracking (automatic expiration and auto-logout)
- * - Active In-Memory Session Validation
- * - Storage Tamper Guard (disallows bypass via manual localStorage manipulation)
- * - Protected Routes integration
+ * Architecture:
+ * - 100% Server-Authoritative: Authentication & RBAC roles come strictly from ASP.NET Core backend (/api/auth)
+ * - Real JWT tokens issued and signed by ASP.NET Core (no synthetic/frontend-generated tokens)
+ * - Zero hardcoded demo users or default identities
+ * - Dynamic role authorization based on backend-issued claims
  */
-
-import { INITIAL_TEAM_MEMBERS } from '../data/teamData';
-import { signAuthToken, verifyAuthToken, clearRuntimeSecret, TokenPayload } from '../utils/securityUtils';
 
 export type D365SecurityRole =
   | 'ESS_USER'       // Employee Self-Service User (الموظف)
@@ -24,8 +19,8 @@ export type D365SecurityRole =
   | 'Admin';         // Legacy alias for SYSTEM_ADMIN
 
 export interface RegisteredUser {
-  id: string; // WorkerPersonnelNumber e.g., 'EMP-10492'
-  civilId: string; // 14-digit National ID
+  id: string; // WorkerPersonnelNumber
+  civilId: string; // National ID
   name: string;
   jobTitle: string;
   department: string;
@@ -34,7 +29,7 @@ export interface RegisteredUser {
   phone?: string;
   legalEntity?: string;
   role: D365SecurityRole;
-  roles: D365SecurityRole[]; // RBAC Multi-Role support (e.g. ['ESS_USER', 'MSS_MGR'])
+  roles: D365SecurityRole[]; // RBAC Multi-Role support (from ASP.NET Core)
   avatarUrl?: string;
   isActive: boolean;
 }
@@ -57,116 +52,37 @@ export interface AuthResponse {
   session?: AuthSession;
 }
 
-export type AuthEventReason = 'LOGIN' | 'LOGOUT' | 'EXPIRED' | 'TAMPER_DETECTED';
-
-// Registered users directory
-const INITIAL_REGISTERED_USERS: RegisteredUser[] = [
-  // 1. Primary ESS Employee & Demo Manager (هدى فتحي عبد المجيد)
-  // Configured with both roles: ESS_USER and MSS_MGR for full demo & manager evaluation
-  {
-    id: 'EMP-10492',
-    civilId: '28509180102934',
-    name: 'هدى فتحي عبد المجيد',
-    jobTitle: 'محلل نظم أول',
-    department: 'تكنولوجيا المعلومات',
-    division: 'وظائف متخصصة',
-    email: 'hoda.fathi@contoso.gov.eg',
-    phone: '+20 10 1234 5678',
-    legalEntity: 'EG01 - الإدارة العامة للتحول الرقمي',
-    role: 'MSS_MGR',
-    roles: ['ESS_USER', 'MSS_MGR'],
-    avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=150&h=150&q=80',
-    isActive: true,
-  },
-  // 2. Direct Manager / General Manager (د. أحمد محمد عبد الله)
-  {
-    id: 'EMP-10000',
-    civilId: '29897622655477',
-    name: 'د. أحمد محمد عبد الله',
-    jobTitle: 'مدير عام الإدارة العامة لتكنولوجيا المعلومات',
-    department: 'تكنولوجيا المعلومات',
-    division: 'الإدارة العليا',
-    email: 'ahmed.abdallah@contoso.gov.eg',
-    phone: '+20 10 9876 5432',
-    legalEntity: 'EG01 - الإدارة العامة للتحول الرقمي',
-    role: 'MSS_MGR',
-    roles: ['ESS_USER', 'MSS_MGR'],
-    avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80',
-    isActive: true,
-  },
-  // 3. Registered Team Members (18 members from MSS team roster)
-  ...INITIAL_TEAM_MEMBERS.map((m) => ({
-    id: m.id,
-    civilId: m.civilId,
-    name: m.name,
-    jobTitle: m.jobTitle,
-    department: m.department,
-    email: m.email,
-    phone: m.phone,
-    role: 'ESS_USER' as D365SecurityRole,
-    roles: ['ESS_USER' as D365SecurityRole],
-    avatarUrl: m.avatarUrl,
-    isActive: true,
-  })),
-  // 4. Delegated Employees
-  {
-    id: 'EMP-10001',
-    civilId: '28801010101234',
-    name: 'أحمد المحمدي',
-    jobTitle: 'محلل نظم',
-    department: 'تكنولوجيا المعلومات',
-    email: 'a.mohamady@contoso.gov.eg',
-    role: 'ESS_USER',
-    roles: ['ESS_USER'],
-    isActive: true,
-  },
-  {
-    id: 'EMP-10812',
-    civilId: '29102020105678',
-    name: 'سارة العبدالله',
-    jobTitle: 'مهندسة برمجيات',
-    department: 'تكنولوجيا المعلومات',
-    email: 's.abdallah@contoso.gov.eg',
-    role: 'ESS_USER',
-    roles: ['ESS_USER'],
-    isActive: true,
-  },
-  {
-    id: 'EMP-10904',
-    civilId: '28703030109012',
-    name: 'خالد القحطاني',
-    jobTitle: 'أخصائي قواعد بيانات',
-    department: 'تكنولوجيا المعلومات',
-    email: 'k.qahtani@contoso.gov.eg',
-    role: 'ESS_USER',
-    roles: ['ESS_USER'],
-    isActive: true,
-  },
-];
+export type AuthEventReason = 'LOGIN' | 'LOGOUT' | 'EXPIRED' | 'SESSION_INVALID' | 'TAMPER_DETECTED';
 
 const SECURE_TOKEN_STORAGE_KEY = 'd365_auth_token';
+const SECURE_USER_STORAGE_KEY = 'd365_auth_user';
 const REMEMBERED_CARD_KEY = 'd365_remembered_card';
-const SESSION_EXPIRATION_MINUTES = 60; // 60 minutes lifetime
+
+function parseJwtClaims(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const jsonStr = decodeURIComponent(escape(atob(b64)));
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+}
 
 export class AuthenticationService {
-  private registeredUsers: RegisteredUser[] = [...INITIAL_REGISTERED_USERS];
   private currentUser: RegisteredUser | null = null;
   private currentSession: AuthSession | null = null;
-  // In-memory active tokens registry (tokens verified and issued by the service)
-  private activeVerifiedTokens: Set<string> = new Set();
   private listeners: Set<(user: RegisteredUser | null, reason?: AuthEventReason) => void> = new Set();
   private expirationTimer: number | null = null;
 
   constructor() {
     this.cleanLegacyFlags();
-    this.restoreAndVerifyTokenSession();
-    this.setupStorageTamperProtection();
+    this.restoreSessionFromStorage();
     this.startExpirationMonitor();
   }
 
-  /**
-   * Completely scrubs any legacy boolean flags like d365_is_authenticated
-   */
   private cleanLegacyFlags(): void {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -174,60 +90,23 @@ export class AuthenticationService {
       }
       if (typeof window !== 'undefined' && window.sessionStorage) {
         sessionStorage.removeItem('d365_is_authenticated');
+        sessionStorage.removeItem('__d365_sec_rk__');
       }
     } catch {
       // Ignore storage errors
     }
   }
 
-  /**
-   * Storage Tamper Guard:
-   * Listens for changes to storage. If a user manually alters localStorage
-   * (e.g. injects fake tokens or sets d365_is_authenticated in DevTools),
-   * the guard immediately detects the tampering, purges the invalid keys,
-   * re-validates the token cryptographically, and denies access.
-   */
-  private setupStorageTamperProtection(): void {
-    if (typeof window === 'undefined') return;
-
-    window.addEventListener('storage', (event) => {
-      // 1. Explicitly reject any attempt to manually set d365_is_authenticated
-      if (event.key === 'd365_is_authenticated') {
-        this.cleanLegacyFlags();
-        this.validateCurrentState('TAMPER_DETECTED');
-        return;
-      }
-
-      // 2. If token in storage was modified externally
-      if (event.key === SECURE_TOKEN_STORAGE_KEY) {
-        this.validateCurrentState('TAMPER_DETECTED');
-      }
-    });
-
-    // Also verify session integrity on window focus/visibility
-    window.addEventListener('focus', () => {
-      this.cleanLegacyFlags();
-      this.checkSessionExpiration();
-    });
-  }
-
-  /**
-   * Background monitor to check session expiration periodically
-   */
   private startExpirationMonitor(): void {
     if (typeof window === 'undefined') return;
     if (this.expirationTimer) {
       clearInterval(this.expirationTimer);
     }
-    // Check every 10 seconds for token expiration
     this.expirationTimer = window.setInterval(() => {
       this.checkSessionExpiration();
-    }, 10000);
+    }, 15000);
   }
 
-  /**
-   * Checks if current session token has reached its expiration time
-   */
   public checkSessionExpiration(): boolean {
     if (!this.currentSession) return false;
 
@@ -236,260 +115,234 @@ export class AuthenticationService {
       this.logout('EXPIRED');
       return true;
     }
-
-    // Verify token cryptographic signature
-    const verification = verifyAuthToken(this.currentSession.token);
-    if (!verification.valid) {
-      this.logout(verification.expired ? 'EXPIRED' : 'TAMPER_DETECTED');
-      return true;
-    }
-
     return false;
   }
 
-  /**
-   * Restores and cryptographically validates the token from sessionStorage
-   * No auto-login or default authenticated state allowed.
-   */
-  private restoreAndVerifyTokenSession(): void {
-    this.cleanLegacyFlags();
+  private restoreSessionFromStorage(): void {
+    if (typeof window === 'undefined') return;
 
     try {
-      if (typeof window === 'undefined') return;
+      const token =
+        sessionStorage.getItem(SECURE_TOKEN_STORAGE_KEY) ||
+        localStorage.getItem(SECURE_TOKEN_STORAGE_KEY);
+      const userJson =
+        sessionStorage.getItem(SECURE_USER_STORAGE_KEY) ||
+        localStorage.getItem(SECURE_USER_STORAGE_KEY);
 
-      const storedToken = sessionStorage.getItem(SECURE_TOKEN_STORAGE_KEY);
-      if (!storedToken) {
+      if (!token || !userJson) {
         this.clearSessionData();
         return;
       }
 
-      // Cryptographic verification with HMAC-SHA256 signature check
-      const verification = verifyAuthToken(storedToken);
-      if (!verification.valid || !verification.payload) {
+      const claims = parseJwtClaims(token);
+      if (!claims) {
         this.clearSessionData();
         return;
       }
 
-      const payload = verification.payload;
-
-      // Verify the subject exists in the verified registered users directory
-      const verifiedUser = this.registeredUsers.find(
-        (u) => u.civilId === payload.civilId && u.isActive
-      );
-
-      if (!verifiedUser) {
+      // Check JWT exp (seconds)
+      const expMs = typeof claims.exp === 'number' ? claims.exp * 1000 : 0;
+      if (expMs && Date.now() >= expMs) {
         this.clearSessionData();
         return;
       }
 
-      // Restore valid session with updated RBAC roles
+      const user: RegisteredUser = JSON.parse(userJson);
       const session: AuthSession = {
-        token: storedToken,
-        civilId: verifiedUser.civilId,
-        userId: verifiedUser.id,
-        userName: verifiedUser.name,
-        role: verifiedUser.role,
-        roles: verifiedUser.roles,
-        issuedAt: payload.iat,
-        expiresAt: payload.exp,
+        token,
+        civilId: user.civilId,
+        userId: user.id,
+        userName: user.name,
+        role: user.role,
+        roles: user.roles,
+        issuedAt: typeof claims.iat === 'number' ? claims.iat * 1000 : Date.now(),
+        expiresAt: expMs || Date.now() + 2 * 60 * 60 * 1000,
       };
 
+      this.currentUser = user;
       this.currentSession = session;
-      this.currentUser = verifiedUser;
-      this.activeVerifiedTokens.add(storedToken);
     } catch {
       this.clearSessionData();
     }
   }
 
-  /**
-   * Validates current authentication state and logs out if forged
-   */
-  private validateCurrentState(reason: AuthEventReason = 'TAMPER_DETECTED'): void {
-    if (!this.currentSession) return;
-
-    try {
-      const storedToken = sessionStorage.getItem(SECURE_TOKEN_STORAGE_KEY);
-      if (!storedToken || storedToken !== this.currentSession.token) {
-        this.logout(reason);
-        return;
-      }
-
-      const verification = verifyAuthToken(storedToken);
-      if (!verification.valid) {
-        this.logout(verification.expired ? 'EXPIRED' : 'TAMPER_DETECTED');
-      }
-    } catch {
-      this.logout(reason);
-    }
-  }
-
-  /**
-   * Authenticate user credentials and issue cryptographically signed session token
-   */
-  public login(
-    nationalIdOrUsername: string,
+  public async loginAsync(
+    username: string,
     password: string,
     rememberMe: boolean = false
-  ): AuthResponse {
+  ): Promise<AuthResponse> {
     this.cleanLegacyFlags();
 
-    const cleanId = (nationalIdOrUsername || '').trim().replace(/\s/g, '');
-    const genericErrorMessage = 'اسم المستخدم أو كلمة المرور غير صحيحة';
-
-    // 1. Basic format validations
-    if (!cleanId || !password || !password.trim()) {
-      return { success: false, errorMessage: genericErrorMessage };
+    const cleanUsername = (username || '').trim().replace(/\s/g, '');
+    if (!cleanUsername || !password) {
+      return { success: false, errorMessage: 'يرجى إدخال اسم المستخدم وكلمة المرور' };
     }
 
-    if (/^\d+$/.test(cleanId) && cleanId.length !== 14) {
-      return { success: false, errorMessage: genericErrorMessage };
-    }
-
-    // 2. Lookup user in registered users directory
-    const foundUser = this.registeredUsers.find((user) => {
-      return (
-        user.civilId === cleanId ||
-        user.id.toLowerCase() === cleanId.toLowerCase() ||
-        user.email.toLowerCase() === cleanId.toLowerCase()
-      );
-    });
-
-    // Strictly reject unregistered IDs
-    if (!foundUser || !foundUser.isActive) {
-      return { success: false, errorMessage: genericErrorMessage };
-    }
-
-    // Ensure demo user explicitly has BOTH roles: ESS_USER and MSS_MGR
-    if (foundUser.civilId === '28509180102934' || foundUser.id === 'EMP-10492') {
-      foundUser.role = 'MSS_MGR';
-      foundUser.roles = ['ESS_USER', 'MSS_MGR'];
-    }
-
-    // 3. Issue HMAC-SHA256 cryptographically signed token with RBAC roles
-    const token = signAuthToken(
-      {
-        sub: foundUser.id,
-        civilId: foundUser.civilId,
-        name: foundUser.name,
-        role: foundUser.role,
-        roles: foundUser.roles,
-      },
-      SESSION_EXPIRATION_MINUTES
-    );
-
-    // Verify generated token to retrieve exact timestamps
-    const verification = verifyAuthToken(token);
-    if (!verification.valid || !verification.payload) {
-      return { success: false, errorMessage: 'فشل إنشاء جلسة أمنية مشفرة.' };
-    }
-
-    const session: AuthSession = {
-      token,
-      civilId: foundUser.civilId,
-      userId: foundUser.id,
-      userName: foundUser.name,
-      role: foundUser.role,
-      roles: foundUser.roles,
-      issuedAt: verification.payload.iat,
-      expiresAt: verification.payload.exp,
-    };
-
-    // Store in active in-memory verified tokens registry
-    this.activeVerifiedTokens.add(token);
-    this.currentUser = foundUser;
-    this.currentSession = session;
-
-    // Secure storage in sessionStorage (isolated per browser session)
     try {
-      sessionStorage.setItem(SECURE_TOKEN_STORAGE_KEY, token);
-      if (rememberMe) {
-        localStorage.setItem(REMEMBERED_CARD_KEY, foundUser.civilId);
-      } else {
-        localStorage.removeItem(REMEMBERED_CARD_KEY);
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanUsername, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success || !data.token || !data.user) {
+        return {
+          success: false,
+          errorMessage: data.errorMessage || 'الرقم القومي أو اسم المستخدم أو كلمة المرور غير صحيحة.',
+        };
       }
-    } catch {
-      // Storage error fallback
+
+      const backendUser = data.user;
+      const userRoles = Array.isArray(backendUser.roles) && backendUser.roles.length > 0
+        ? backendUser.roles
+        : [backendUser.role || 'ESS_USER'];
+
+      const user: RegisteredUser = {
+        id: backendUser.id,
+        civilId: backendUser.civilId,
+        name: backendUser.name,
+        jobTitle: backendUser.jobTitle,
+        department: backendUser.department,
+        division: backendUser.division,
+        email: backendUser.email,
+        phone: backendUser.phone,
+        legalEntity: backendUser.legalEntity,
+        role: backendUser.role as D365SecurityRole,
+        roles: userRoles as D365SecurityRole[],
+        avatarUrl: backendUser.avatarUrl,
+        isActive: backendUser.isActive ?? true,
+      };
+
+      const claims = parseJwtClaims(data.token);
+      const expMs = data.expiresAt || (claims && typeof claims.exp === 'number' ? claims.exp * 1000 : Date.now() + 2 * 60 * 60 * 1000);
+
+      const session: AuthSession = {
+        token: data.token,
+        civilId: user.civilId,
+        userId: user.id,
+        userName: user.name,
+        role: user.role,
+        roles: user.roles,
+        issuedAt: Date.now(),
+        expiresAt: expMs,
+      };
+
+      this.currentUser = user;
+      this.currentSession = session;
+
+      try {
+        sessionStorage.setItem(SECURE_TOKEN_STORAGE_KEY, data.token);
+        sessionStorage.setItem(SECURE_USER_STORAGE_KEY, JSON.stringify(user));
+
+        if (rememberMe) {
+          localStorage.setItem(SECURE_TOKEN_STORAGE_KEY, data.token);
+          localStorage.setItem(SECURE_USER_STORAGE_KEY, JSON.stringify(user));
+          localStorage.setItem(REMEMBERED_CARD_KEY, user.civilId);
+        } else {
+          localStorage.removeItem(SECURE_TOKEN_STORAGE_KEY);
+          localStorage.removeItem(SECURE_USER_STORAGE_KEY);
+          localStorage.removeItem(REMEMBERED_CARD_KEY);
+        }
+      } catch {
+        // Storage access error fallback
+      }
+
+      this.notify('LOGIN');
+      return { success: true, user, session };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'تعذر الاتصال بخادم تسجيل الدخول';
+      return { success: false, errorMessage: msg };
     }
-
-    this.notify('LOGIN');
-
-    return {
-      success: true,
-      user: { ...foundUser },
-      session,
-    };
   }
 
-  /**
-   * Revoke session and log out
-   */
-  public logout(reason: AuthEventReason = 'LOGOUT'): void {
-    if (this.currentSession) {
-      this.activeVerifiedTokens.delete(this.currentSession.token);
+  public login(
+    username: string,
+    password: string,
+    rememberMe: boolean = false
+  ): Promise<AuthResponse> {
+    return this.loginAsync(username, password, rememberMe);
+  }
+
+  public async changePasswordAsync(currentPassword: string, newPassword: string, confirmPassword: string): Promise<{ success: boolean; errorMessage?: string }> {
+    if (!this.currentSession?.token) return { success: false, errorMessage: 'يرجى تسجيل الدخول مجدداً.' };
+    try {
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.currentSession.token}`,
+        },
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+      });
+      if (response.status === 401) {
+        this.invalidateSession();
+        return { success: false, errorMessage: 'انتهت الجلسة. يرجى تسجيل الدخول مجدداً.' };
+      }
+      const result = await response.json();
+      return response.ok && result.success
+        ? { success: true }
+        : { success: false, errorMessage: result.error?.message || 'تعذر تغيير كلمة المرور.' };
+    } catch {
+      return { success: false, errorMessage: 'تعذر الاتصال بالخادم. حاول مجدداً.' };
     }
+  }
+
+  public logout(reason: AuthEventReason = 'LOGOUT'): void {
+    if (this.currentSession?.token) {
+      try {
+        fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.currentSession.token}`,
+          },
+        }).catch(() => {});
+      } catch {
+        // Ignore network failure during logout
+      }
+    }
+
     this.clearSessionData();
     this.notify(reason);
+  }
+
+  public invalidateSession(): void {
+    this.clearSessionData();
+    this.notify('SESSION_INVALID');
   }
 
   private clearSessionData(): void {
     this.currentUser = null;
     this.currentSession = null;
-    this.activeVerifiedTokens.clear();
     this.cleanLegacyFlags();
-    clearRuntimeSecret();
+
     try {
-      if (typeof window !== 'undefined' && window.sessionStorage) {
+      if (typeof window !== 'undefined') {
         sessionStorage.removeItem(SECURE_TOKEN_STORAGE_KEY);
-        sessionStorage.removeItem('d365_is_authenticated');
-        sessionStorage.removeItem('__d365_sec_rk__');
+        sessionStorage.removeItem(SECURE_USER_STORAGE_KEY);
+        localStorage.removeItem(SECURE_TOKEN_STORAGE_KEY);
+        localStorage.removeItem(SECURE_USER_STORAGE_KEY);
       }
     } catch {
       // Ignore
     }
   }
 
-  /**
-   * Strictly checks if the user is currently authenticated with a valid,
-   * unexpired, cryptographically signed token.
-   * Modifying localStorage CANNOT make this return true!
-   */
   public isAuthenticated(): boolean {
-    this.cleanLegacyFlags();
-
     if (!this.currentUser || !this.currentSession) {
       return false;
     }
 
-    // 1. In-memory verified token check
-    if (!this.activeVerifiedTokens.has(this.currentSession.token)) {
-      return false;
-    }
-
-    // 2. Expiration check
     if (Date.now() >= this.currentSession.expiresAt) {
       this.logout('EXPIRED');
       return false;
     }
 
-    // 3. Cryptographic signature and tamper verification
-    const verification = verifyAuthToken(this.currentSession.token);
-    if (!verification.valid || !verification.payload) {
-      this.logout(verification.expired ? 'EXPIRED' : 'TAMPER_DETECTED');
-      return false;
-    }
-
-    // 4. User registered and active check
-    const isRegistered = this.registeredUsers.some(
-      (u) => u.civilId === this.currentUser?.civilId && u.isActive
-    );
-
-    return isRegistered;
+    return true;
   }
 
-  /**
-   * Verify token on-demand (used by Protected Route guards)
-   */
   public verifyCurrentToken(): {
     isValid: boolean;
     isExpired: boolean;
@@ -511,23 +364,14 @@ export class AuthenticationService {
     };
   }
 
-  /**
-   * Returns current active user or null
-   */
   public getCurrentUser(): RegisteredUser | null {
     return this.isAuthenticated() && this.currentUser ? { ...this.currentUser } : null;
   }
 
-  /**
-   * Returns current active session or null
-   */
   public getCurrentSession(): AuthSession | null {
     return this.isAuthenticated() && this.currentSession ? { ...this.currentSession } : null;
   }
 
-  /**
-   * Get remembered card id if previously saved
-   */
   public getRememberedCardId(): string | null {
     try {
       return localStorage.getItem(REMEMBERED_CARD_KEY);
@@ -536,30 +380,16 @@ export class AuthenticationService {
     }
   }
 
-  /**
-   * Checks whether a specific Civil ID is registered
-   */
-  public isRegisteredUser(civilId: string): boolean {
-    const clean = (civilId || '').trim();
-    return this.registeredUsers.some((u) => u.civilId === clean && u.isActive);
-  }
-
-  /**
-   * Evaluates if user possesses a specific D365 security role (RBAC evaluator)
-   * Supports standard Dynamics 365 security roles: ESS_USER, MSS_MGR, SYSTEM_ADMIN
-   */
   public hasRole(targetRole: D365SecurityRole, user?: RegisteredUser | null): boolean {
     const targetUser = user || this.currentUser;
     if (!targetUser) return false;
 
     const userRoles = targetUser.roles && targetUser.roles.length > 0 ? targetUser.roles : [targetUser.role];
 
-    // Direct match
     if (userRoles.includes(targetRole) || targetUser.role === targetRole) {
       return true;
     }
 
-    // Standard D365 security role equivalences
     if (targetRole === 'MSS_MGR') {
       return (
         userRoles.includes('MSS_MGR') ||
@@ -568,10 +398,8 @@ export class AuthenticationService {
         userRoles.includes('Admin') ||
         targetUser.role === 'MSS_MGR' ||
         targetUser.role === 'Manager' ||
-        targetUser.role === 'Admin' ||
         targetUser.role === 'SYSTEM_ADMIN' ||
-        targetUser.civilId === '28509180102934' || // Demo primary user assigned MSS_MGR
-        targetUser.civilId === '29897622655477'
+        targetUser.role === 'Admin'
       );
     }
 
@@ -584,8 +412,7 @@ export class AuthenticationService {
         userRoles.includes('ESS_USER') ||
         userRoles.includes('Employee') ||
         targetUser.role === 'ESS_USER' ||
-        targetUser.role === 'Employee' ||
-        targetUser.civilId === '28509180102934'
+        targetUser.role === 'Employee'
       );
     }
 
@@ -607,9 +434,6 @@ export class AuthenticationService {
     return false;
   }
 
-  /**
-   * Check route permission based on D365 RBAC security matrix
-   */
   public canAccessRoute(routeModule: string): { allowed: boolean; reason?: string } {
     if (!this.isAuthenticated()) {
       return { allowed: false, reason: 'NOT_AUTHENTICATED' };
@@ -620,24 +444,8 @@ export class AuthenticationService {
       return { allowed: false, reason: 'USER_NOT_FOUND' };
     }
 
-    // Role-based route access logic (RBAC) - Array-based validation
-    const userRoles: string[] = Array.isArray(user.roles) && user.roles.length > 0
-      ? [...user.roles]
-      : (user.role ? [user.role] : []);
-
-    if (user.civilId === '28509180102934' || user.id === 'EMP-10492') {
-      if (!userRoles.includes('ESS_USER')) userRoles.push('ESS_USER');
-      if (!userRoles.includes('MSS_MGR')) userRoles.push('MSS_MGR');
-    }
-
     if (routeModule === 'team') {
-      // My Team must allow access when: roles.includes("MSS_MGR")
-      const allowsTeam =
-        userRoles.includes('MSS_MGR') ||
-        userRoles.includes('Manager') ||
-        userRoles.includes('SYSTEM_ADMIN') ||
-        userRoles.includes('Admin');
-
+      const allowsTeam = this.hasRole('MSS_MGR', user);
       if (!allowsTeam) {
         return {
           allowed: false,
@@ -649,9 +457,6 @@ export class AuthenticationService {
     return { allowed: true };
   }
 
-  /**
-   * Subscribe to auth lifecycle changes
-   */
   public subscribe(
     listener: (user: RegisteredUser | null, reason?: AuthEventReason) => void
   ): () => void {

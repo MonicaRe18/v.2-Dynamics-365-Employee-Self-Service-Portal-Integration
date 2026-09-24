@@ -13,7 +13,7 @@ export class TeamApi {
    * D365 OData: GET /data/PositionWorkerAssignments?$filter=ReportsToPosition eq '{pos}'
    */
   public async getTeamMembers(
-    managerPersonnelNumber: string = 'EMP-10000'
+    managerPersonnelNumber: string
   ): Promise<ApiResponse<TeamMember[]>> {
     return apiClient.get<TeamMember[]>(
       `/team-members?managerId=${encodeURIComponent(managerPersonnelNumber)}`

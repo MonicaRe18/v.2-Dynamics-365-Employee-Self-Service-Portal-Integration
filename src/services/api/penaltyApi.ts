@@ -7,6 +7,7 @@
  */
 
 import { apiClient, ApiResponse } from './apiClient';
+import { authService } from '../authService';
 import { Penalty, Grievance } from '../../types/d365.types';
 
 export class PenaltyApi {
@@ -15,9 +16,11 @@ export class PenaltyApi {
    * D365 OData: GET /data/DisciplinaryActions?$filter=WorkerPersonnelNumber eq '{id}'
    */
   public async getPenalties(
-    personnelNumber: string = 'EMP-10492'
+    personnelNumber?: string
   ): Promise<ApiResponse<Penalty[]>> {
-    return apiClient.get<Penalty[]>(`/penalties?workerId=${encodeURIComponent(personnelNumber)}`);
+    const id = personnelNumber || authService.getCurrentUser()?.id || '';
+    const query = id ? `?workerId=${encodeURIComponent(id)}` : '';
+    return apiClient.get<Penalty[]>(`/penalties${query}`);
   }
 
   /**
