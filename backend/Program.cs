@@ -86,6 +86,15 @@ var d365Settings = new D365Settings
     ReassignmentEndpointPath = Environment.GetEnvironmentVariable("D365_REASSIGNMENT_ENDPOINT_PATH")
         ?? Environment.GetEnvironmentVariable("D365Settings__ReassignmentEndpointPath")
         ?? builder.Configuration["D365Settings:ReassignmentEndpointPath"] ?? "/api/services/PAR_EssAssignmentServiceGroup/PAR_EssAssignmentService/submitAssignment",
+    SecondmentEndpointPath = Environment.GetEnvironmentVariable("D365_SECONDMENT_ENDPOINT_PATH")
+        ?? Environment.GetEnvironmentVariable("D365Settings__SecondmentEndpointPath")
+        ?? builder.Configuration["D365Settings:SecondmentEndpointPath"] ?? "/api/services/PAR_EssSecondmentServiceGroup/PAR_EssSecondmentService/submitSecondment",
+    TransferEndpointPath = Environment.GetEnvironmentVariable("D365_TRANSFER_ENDPOINT_PATH")
+        ?? Environment.GetEnvironmentVariable("D365Settings__TransferEndpointPath")
+        ?? builder.Configuration["D365Settings:TransferEndpointPath"] ?? "/api/services/PAR_EssTransferServiceGroup/PAR_EssTransferService/submitTransfer",
+    PenaltyEndpointPath = Environment.GetEnvironmentVariable("D365_PENALTY_ENDPOINT_PATH")
+        ?? Environment.GetEnvironmentVariable("D365Settings__PenaltyEndpointPath")
+        ?? builder.Configuration["D365Settings:PenaltyEndpointPath"] ?? "/api/services/PAR_EssPenaltyServiceGroup/PAR_EssPenaltyService/getPenalties",
     TimeoutSeconds = int.TryParse(Environment.GetEnvironmentVariable("D365_TIMEOUT_SECONDS"), out var timeout) ? timeout : 30
 };
 

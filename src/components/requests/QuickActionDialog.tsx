@@ -4,6 +4,8 @@ import { D365Dialog } from '../common/D365Dialog';
 import { d365Service } from '../../services/d365Service';
 import { Employee, UnifiedRequestItem } from '../../types/d365.types';
 import { reassignmentApi } from '../../services/api/reassignmentApi';
+import { secondmentApi } from '../../services/api/secondmentApi';
+import { transferApi } from '../../services/api/transferApi';
 
 export type QuickActionType =
   | 'PERMISSION'
@@ -127,6 +129,50 @@ export const QuickActionDialog: React.FC<QuickActionDialogProps> = ({
       return;
     }
 
+    if (actionType === 'LOAN') {
+      if (!targetEntity.trim()) {
+        setErrorMessage('يرجى إدخال الجهة المستعيرة');
+        setIsSubmitting(false);
+        return;
+      }
+      try {
+        const result = await secondmentApi.submit(requestDate, targetEntity.trim());
+        if (!result.isSuccess || !result.data?.submitted || !result.data.requestId) {
+          setErrorMessage(result.error || 'تعذر إرسال طلب الإعارة إلى Dynamics 365.');
+          return;
+        }
+        onSuccess(`تم إرسال طلب الإعارة الوظيفية برقم ${result.data.requestId}.`);
+        onClose();
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'تعذر إرسال طلب الإعارة إلى Dynamics 365.');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    if (actionType === 'TRANSFER') {
+      if (!notes.trim()) {
+        setErrorMessage('يرجى كتابة أسباب ومبررات طلب النقل الوظيفي');
+        setIsSubmitting(false);
+        return;
+      }
+      try {
+        const result = await transferApi.submit(requestDate, notes.trim());
+        if (!result.isSuccess || !result.data?.submitted || !result.data.transferId) {
+          setErrorMessage(result.error || 'تعذر إرسال طلب النقل إلى Dynamics 365.');
+          return;
+        }
+        onSuccess(`تم إرسال طلب النقل الوظيفي برقم ${result.data.transferId}.`);
+        onClose();
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'تعذر إرسال طلب النقل إلى Dynamics 365.');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     if (!targetEntity.trim()) {
       setErrorMessage(`يرجى إدخال ${config.typeLabel}`);
       setIsSubmitting(false);
@@ -188,13 +234,13 @@ export const QuickActionDialog: React.FC<QuickActionDialogProps> = ({
         )}
 
         <div className="space-y-3">
-          {actionType === 'SECONDMENT' && (
+          {(actionType === 'SECONDMENT' || actionType === 'LOAN' || actionType === 'TRANSFER') && (
             <div className="grid grid-cols-2 gap-2 bg-[#F9F9F9] border border-[#EDEBE9] p-2 text-xs">
               <div><span className="text-[#605E5C] block">الموظف</span><strong>{employee.name}</strong></div>
               <div><span className="text-[#605E5C] block">الوظيفة</span><strong>{employee.jobTitle}</strong></div>
             </div>
           )}
-          {actionType !== 'SECONDMENT' && <div>
+          {actionType !== 'SECONDMENT' && actionType !== 'TRANSFER' && <div>
             <label className="block text-xs font-semibold text-[#323130] mb-1">
               {config.typeLabel} <span className="text-[#A80000]">*</span>
             </label>
@@ -247,7 +293,7 @@ export const QuickActionDialog: React.FC<QuickActionDialogProps> = ({
               </div>
             </>
           )}
-          {actionType !== 'SECONDMENT' && <div>
+          {actionType !== 'SECONDMENT' && actionType !== 'LOAN' && <div>
             <label className="block text-xs font-semibold text-[#323130] mb-1">
               {config.reasonLabel} <span className="text-[#A80000]">*</span>
             </label>

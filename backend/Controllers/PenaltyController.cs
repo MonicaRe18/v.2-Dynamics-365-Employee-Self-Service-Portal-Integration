@@ -19,9 +19,9 @@ public class PenaltyController : ControllerBase
     }
 
     [HttpGet("penalties")]
-    public async Task<ActionResult<List<PenaltyDto>>> GetPenalties([FromQuery] string? workerId, CancellationToken ct)
+    public async Task<ActionResult<List<PenaltyDto>>> GetPenalties(CancellationToken ct)
     {
-        var targetId = !string.IsNullOrWhiteSpace(workerId) ? workerId : User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var targetId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrWhiteSpace(targetId))
         {
             return BadRequest(new { error = new { message = "معرف الموظف مطلوب أو يجب تسجيل الدخول." } });

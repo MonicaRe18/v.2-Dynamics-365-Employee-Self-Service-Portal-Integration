@@ -56,10 +56,14 @@ async function startBackend(): Promise<void> {
     let cmd = 'dotnet';
     let args: string[] = [];
 
-    if (fs.existsSync(binaryPath)) {
+    if (isProduction && fs.existsSync(binaryPath)) {
       args = [binaryPath, `--urls=http://127.0.0.1:${BACKEND_PORT}`];
     } else {
-      args = ['run', '--project', 'backend/D365.Ess.Api.csproj', `--urls=http://127.0.0.1:${BACKEND_PORT}`];
+      args = [
+        'run', '--project', path.resolve(__dirname, 'backend/D365.Ess.Api.csproj'), '--no-launch-profile',
+        '-p:UseAppHost=false', `-p:OutputPath=${path.resolve(__dirname, 'backend/bin/Portal')}${path.sep}`,
+        '--', `--urls=http://127.0.0.1:${BACKEND_PORT}`,
+      ];
     }
 
     dotnetProcess = spawn(cmd, args, {

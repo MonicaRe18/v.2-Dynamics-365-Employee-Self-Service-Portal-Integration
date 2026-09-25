@@ -63,6 +63,9 @@ public class D365Settings
     public string ResourceUrl { get; set; } = string.Empty;
     public string LegalEntity { get; set; } = string.Empty;
     public string ReassignmentEndpointPath { get; set; } = "/api/services/PAR_EssAssignmentServiceGroup/PAR_EssAssignmentService/submitAssignment";
+    public string SecondmentEndpointPath { get; set; } = "/api/services/PAR_EssSecondmentServiceGroup/PAR_EssSecondmentService/submitSecondment";
+    public string TransferEndpointPath { get; set; } = "/api/services/PAR_EssTransferServiceGroup/PAR_EssTransferService/submitTransfer";
+    public string PenaltyEndpointPath { get; set; } = "/api/services/PAR_EssPenaltyServiceGroup/PAR_EssPenaltyService/getPenalties";
     public int TimeoutSeconds { get; set; } = 30;
 
     public static bool IsValidValue(string? val)

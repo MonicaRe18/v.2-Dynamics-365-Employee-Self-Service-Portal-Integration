@@ -12,6 +12,7 @@ public interface ID365Client
     Task<TResponse?> PostAsync<TRequest, TResponse>(string entitySet, TRequest body, CancellationToken cancellationToken = default);
     Task<bool> PostActionAsync(string entitySetAndAction, CancellationToken cancellationToken = default);
     Task<string> PostCustomRequestAsync(string relativePath, object body, CancellationToken cancellationToken = default);
+    Task<List<T>> PostCustomListAsync<T>(string relativePath, object body, CancellationToken cancellationToken = default);
     Task<TResponse?> PatchAsync<TRequest, TResponse>(string entitySetAndKey, TRequest body, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(string entitySetAndKey, CancellationToken cancellationToken = default);
     Task<bool> PingAsync(CancellationToken cancellationToken = default);
@@ -226,6 +227,33 @@ public class D365Client : ID365Client
 
         _logger.LogWarning("D365 custom service {Path} returned {StatusCode}: {Error}", relativePath, response.StatusCode, responseBody);
         throw new InvalidOperationException($"Dynamics custom service request failed (HTTP {(int)response.StatusCode}): {responseBody[..Math.Min(responseBody.Length, 500)]}");
+    }
+
+    public async Task<List<T>> PostCustomListAsync<T>(string relativePath, object body, CancellationToken cancellationToken = default)
+    {
+        if (!relativePath.StartsWith('/') || relativePath.StartsWith("//") || relativePath.Contains("..") || relativePath.Contains('?'))
+            throw new ArgumentException("Dynamics service path must be an absolute relative path without a query string.", nameof(relativePath));
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, _settings.BaseUrl.TrimEnd('/') + relativePath);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await GetAccessTokenAsync(cancellationToken));
+        request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("D365 custom service {Path} returned {StatusCode}: {Error}", relativePath, response.StatusCode, responseBody);
+            throw new InvalidOperationException($"Dynamics penalty read failed (HTTP {(int)response.StatusCode}): {responseBody[..Math.Min(responseBody.Length, 500)]}");
+        }
+
+        using var result = JsonDocument.Parse(responseBody);
+        var items = result.RootElement.ValueKind == JsonValueKind.Object &&
+                    result.RootElement.TryGetProperty("result", out var value)
+            ? value
+            : result.RootElement;
+        if (items.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("Dynamics penalty service did not return a list.");
+        return JsonSerializer.Deserialize<List<T>>(items.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
     }
 
     public async Task<TResponse?> PatchAsync<TRequest, TResponse>(string entitySetAndKey, TRequest body, CancellationToken cancellationToken = default)

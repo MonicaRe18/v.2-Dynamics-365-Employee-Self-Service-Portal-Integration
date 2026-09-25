@@ -1,26 +1,19 @@
 /**
  * Microsoft Dynamics 365 Disciplinary Actions & Penalties Integration API
  * Handles Disciplinary Decisions, Penalties records, and Grievance submissions
- * Maps to D365 OData:
- * - /data/DisciplinaryActions
- * - /data/DisciplinaryGrievances
+ * Reads penalties through the ESS backend's PAR_Penalties service.
  */
 
 import { apiClient, ApiResponse } from './apiClient';
-import { authService } from '../authService';
 import { Penalty, Grievance } from '../../types/d365.types';
 
 export class PenaltyApi {
   /**
    * Fetches official penalties and disciplinary actions
-   * D365 OData: GET /data/DisciplinaryActions?$filter=WorkerPersonnelNumber eq '{id}'
+   * The backend uses the signed-in worker's identity.
    */
-  public async getPenalties(
-    personnelNumber?: string
-  ): Promise<ApiResponse<Penalty[]>> {
-    const id = personnelNumber || authService.getCurrentUser()?.id || '';
-    const query = id ? `?workerId=${encodeURIComponent(id)}` : '';
-    return apiClient.get<Penalty[]>(`/penalties${query}`);
+  public async getPenalties(): Promise<ApiResponse<Penalty[]>> {
+    return apiClient.get<Penalty[]>('/penalties');
   }
 
   /**
