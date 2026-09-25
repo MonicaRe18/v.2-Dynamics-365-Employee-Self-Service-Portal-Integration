@@ -25,7 +25,8 @@ export const PenaltiesDialog: React.FC<PenaltiesDialogProps> = ({
   penalties,
   onRefresh,
 }) => {
-  const [selectedPenalty, setSelectedPenalty] = useState<Penalty | null>(penalties[0] || null);
+  const [selectedPenaltyId, setSelectedPenaltyId] = useState<string | null>(null);
+  const selectedPenalty = penalties.find((penalty) => penalty.id === selectedPenaltyId) ?? penalties[0] ?? null;
   const [isDetailsOpen, setIsDetailsOpen] = useState(true);
   const [grievanceTargetPenalty, setGrievanceTargetPenalty] = useState<Penalty | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -37,7 +38,7 @@ export const PenaltiesDialog: React.FC<PenaltiesDialogProps> = ({
         'رقم الجزاء': p.penaltyNumber,
         'حالة الجزاء': p.hearingStatus || p.penaltyStatusAr,
         'تاريخ توقيع الجزاء': p.penaltySigningDate,
-        'تاريخ محو الجزاء': p.penaltyRemovalDate || '2026-09-07',
+        'تاريخ محو الجزاء': p.penaltyRemovalDate || '—',
         'عقوبة الموظف': p.employeePenalty,
         'جهة التحقيق': p.investigationAuthority,
         'مدة الجزاء': p.duration,
@@ -92,12 +93,17 @@ export const PenaltiesDialog: React.FC<PenaltiesDialogProps> = ({
                 </tr>
               </thead>
               <tbody>
+                {penalties.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-4 text-center text-[#605E5C]">لا توجد جزاءات مسجلة.</td>
+                  </tr>
+                )}
                 {penalties.map((penalty) => {
                   const isSelected = selectedPenalty?.id === penalty.id;
                   return (
                     <tr
                       key={penalty.id}
-                      onClick={() => setSelectedPenalty(penalty)}
+                      onClick={() => setSelectedPenaltyId(penalty.id)}
                       className={`border-b border-[#EDEBE9] cursor-pointer transition-colors ${
                         isSelected ? 'bg-[#EDEBE9]' : 'hover:bg-[#FAF9F8]'
                       }`}
@@ -112,7 +118,7 @@ export const PenaltiesDialog: React.FC<PenaltiesDialogProps> = ({
                         {penalty.penaltySigningDate}
                       </td>
                       <td className="p-2.5 border-l border-[#EDEBE9] font-mono text-[#605E5C]">
-                        {penalty.penaltyRemovalDate || '2026-09-07'}
+                        {penalty.penaltyRemovalDate || '—'}
                       </td>
                       <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                         {penalty.hasGrievance ? (
@@ -186,7 +192,7 @@ export const PenaltiesDialog: React.FC<PenaltiesDialogProps> = ({
                   <div className="space-y-1 md:col-span-2">
                     <span className="text-[#605E5C] block">تاريخ محو الجزاء:</span>
                     <span className="font-mono font-semibold text-[#0078D4] bg-[#F9F9F9] p-2 block border border-[#EDEBE9]">
-                      {selectedPenalty.penaltyRemovalDate || '2026-09-07'}
+                      {selectedPenalty.penaltyRemovalDate || '—'}
                     </span>
                   </div>
                 </div>

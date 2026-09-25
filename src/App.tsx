@@ -621,6 +621,7 @@ export default function App() {
         isOpen={!!activeQuickAction}
         onClose={() => setActiveQuickAction(null)}
         actionType={activeQuickAction}
+        employee={employee}
         onSuccess={(msg) => showToast(msg)}
       />
 

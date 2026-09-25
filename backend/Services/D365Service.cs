@@ -20,6 +20,8 @@ public interface ID365Service
     Task<bool> CancelLeaveRequestAsync(string requestId, CancellationToken ct = default);
 
     Task<List<PenaltyDto>> GetPenaltiesAsync(string workerId, CancellationToken ct = default);
+    Task<string> SubmitReassignmentAsync(string workerId, ReassignmentRequestModel request, CancellationToken ct = default);
+    Task<List<ReassignmentCityDto>> GetReassignmentCitiesAsync(CancellationToken ct = default);
     Task<GrievanceDto> SubmitGrievanceAsync(GrievanceRequestModel model, CancellationToken ct = default);
     Task<List<GrievanceDto>> GetGrievancesAsync(string workerId, CancellationToken ct = default);
 
@@ -460,11 +462,64 @@ public class D365Service : ID365Service
     {
         EnsureConfigured();
 
-        var filter = $"cross-company=true&$filter=WorkerPersonnelNumber eq '{workerId}'";
-        var penalties = await _client.GetAsync<List<PenaltyDto>>("DisciplinaryPenalties", filter, ct);
-        foreach (var penalty in penalties ?? new List<PenaltyDto>())
-            penalty.PenaltyStatusAr = ArabicDisplay.PenaltyStatus(penalty.PenaltyStatus);
-        return penalties ?? new List<PenaltyDto>();
+        var filter = $"cross-company=true&$filter={Uri.EscapeDataString($"WorkerPersonnelNumber eq '{workerId.Replace("'", "''")}'")}";
+        var rows = await ReadRowsAsync<D365PenaltyRecord>("DisciplinaryPenalties", filter, ct);
+        return rows.Select((row, index) =>
+        {
+            var number = row.GRIDREQUESTID ?? row.PenaltyNumber ?? string.Empty;
+            var sourceStatus = row.GRIDPENALTYSTATUS ?? row.PenaltyStatusAr ?? row.PenaltyStatus ?? string.Empty;
+            var status = row.PenaltyStatus ?? sourceStatus.Trim().ToLowerInvariant() switch
+            {
+                "expired" or "تم المحو" or "منتهي" => "Expired",
+                "canceled" or "cancelled" or "ملغى" => "Canceled",
+                "undergrievance" or "قيد التظلم" => "UnderGrievance",
+                "grievanceaccepted" or "قُبل التظلم" => "GrievanceAccepted",
+                _ => "Active"
+            };
+            return new PenaltyDto
+            {
+                Id = row.Id ?? (number.Length > 0 ? number : $"penalty-{index}"),
+                PenaltyNumber = number,
+                PenaltyStatus = status,
+                PenaltyStatusAr = ArabicDisplay.PenaltyStatus(sourceStatus),
+                PenaltySigningDate = DateOnly(row.GRIDPENALTYIMPOSITIONDATE ?? row.PenaltySigningDate),
+                PenaltyStartDate = DateOnly(row.PenaltyStartDate),
+                PenaltyRemovalDate = DateOnly(row.GRIDPENALTYERASUREDATE ?? row.PenaltyRemovalDate),
+                Action = row.Action ?? string.Empty,
+                EmployeePenalty = row.EmployeePenalty ?? string.Empty,
+                Duration = row.Duration ?? string.Empty,
+                InvestigationAuthority = row.InvestigationAuthority ?? string.Empty,
+                PenaltyDetails = row.PenaltyDetails ?? string.Empty,
+                HasGrievance = row.HasGrievance,
+                GrievanceStatus = row.GrievanceStatus
+            };
+        }).ToList();
+    }
+
+    public async Task<string> SubmitReassignmentAsync(string workerId, ReassignmentRequestModel request, CancellationToken ct = default)
+    {
+        EnsureConfigured();
+        if (string.IsNullOrWhiteSpace(_settings.ReassignmentEndpointPath))
+            throw new D365ConfigurationException(new List<string> { "D365Settings__ReassignmentEndpointPath (service endpoint creating PAR_Assignment requests)" });
+
+        // The localhost date maps to PAR_Assignment.ApplicationDate.
+        return await _client.PostCustomRequestAsync(_settings.ReassignmentEndpointPath, new
+        {
+            personnelNumber = workerId,
+            applicationDate = request.ApplicationDate,
+            newAddress = request.NewAddress,
+            reassignmentType = request.ReassignmentType,
+            newCityKey = request.NewCityKey,
+            companyId = _settings.LegalEntity
+        }, ct);
+    }
+
+    public async Task<List<ReassignmentCityDto>> GetReassignmentCitiesAsync(CancellationToken ct = default)
+    {
+        EnsureConfigured();
+        var rows = await ReadRowsAsync<D365AddressCityRecord>("AddressCities",
+            $"$filter={Uri.EscapeDataString("CountryRegionId eq 'EGY'")}&$select=CityKey,Name,CountryRegionId", ct);
+        return rows.Select(city => new ReassignmentCityDto { CityKey = city.CityKey, Name = city.Name }).ToList();
     }
 
     public async Task<GrievanceDto> SubmitGrievanceAsync(GrievanceRequestModel model, CancellationToken ct = default)

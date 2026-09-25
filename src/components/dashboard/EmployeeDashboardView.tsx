@@ -87,7 +87,7 @@ export const EmployeeDashboardView: React.FC<EmployeeDashboardViewProps> = ({
 
   // Active annual leave balance
   const annualBalance = leaveBalances.find((b) => b.leaveTypeCode === 'ANNUAL')?.currentBalance ?? 0;
-  const activePenaltiesCount = penalties.filter((p) => p.penaltyStatus === 'Active' || p.hearingStatus).length;
+  const penaltiesCount = penalties.length;
 
   return (
     <div className="space-y-4">
@@ -238,7 +238,7 @@ export const EmployeeDashboardView: React.FC<EmployeeDashboardViewProps> = ({
         <div
           role="button"
           tabIndex={0}
-          aria-label={`الجزاءات: ${activePenaltiesCount} قرار مسجل`}
+          aria-label={`الجزاءات: ${penaltiesCount} قرار مسجل`}
           onClick={onOpenPenaltiesDialog}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -253,7 +253,7 @@ export const EmployeeDashboardView: React.FC<EmployeeDashboardViewProps> = ({
             <AlertTriangle className="w-4 h-4 text-[#D83B01]" aria-hidden="true" />
           </div>
           <div className="text-2xl font-bold font-mono text-[#D83B01] group-hover:scale-105 transition-transform">
-            {activePenaltiesCount}
+            {penaltiesCount}
           </div>
           <div className="text-[11px] text-[#605E5C] mt-1 flex items-center justify-between">
             <span>قرار مسجل</span>

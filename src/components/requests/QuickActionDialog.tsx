@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Send, CheckCircle2, AlertCircle, FileText, Upload, Calendar, X } from 'lucide-react';
 import { D365Dialog } from '../common/D365Dialog';
 import { d365Service } from '../../services/d365Service';
-import { UnifiedRequestItem } from '../../types/d365.types';
+import { Employee, UnifiedRequestItem } from '../../types/d365.types';
+import { reassignmentApi } from '../../services/api/reassignmentApi';
 
 export type QuickActionType =
   | 'PERMISSION'
@@ -30,10 +31,10 @@ const ACTION_CONFIGS: Record<QuickActionType, QuickActionConfig> = {
   },
   SECONDMENT: {
     title: 'تقديم طلب ندب وظيفي',
-    subtitle: 'طلب ندب كلي أو جزئي لجهة حكومية أخرى - Microsoft Dynamics 365 Human Resources',
-    typeLabel: 'جهة الندب المقترحة',
+    subtitle: 'إرسال طلب الندب الوظيفي إلى الموارد البشرية',
+    typeLabel: 'عنوان جهة الندب',
     dateLabel: 'تاريخ بدء الندب المطلوب',
-    reasonLabel: 'المبررات والخبرات المكتسبة',
+    reasonLabel: 'ملاحظات',
   },
   LOAN: {
     title: 'تقديم طلب إعارة وظيفية',
@@ -69,6 +70,7 @@ interface QuickActionDialogProps {
   isOpen: boolean;
   onClose: () => void;
   actionType: QuickActionType | null;
+  employee: Employee;
   onSuccess: (message: string) => void;
 }
 
@@ -76,29 +78,65 @@ export const QuickActionDialog: React.FC<QuickActionDialogProps> = ({
   isOpen,
   onClose,
   actionType,
+  employee,
   onSuccess,
 }) => {
-  const [requestDate, setRequestDate] = useState('2025-09-22');
+  const [requestDate, setRequestDate] = useState('');
   const [targetEntity, setTargetEntity] = useState('');
   const [notes, setNotes] = useState('');
+  const [reassignmentType, setReassignmentType] = useState(0);
+  const [newCityKey, setNewCityKey] = useState('');
+  const [cities, setCities] = useState<{ cityKey: string; name: string }[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || actionType !== 'SECONDMENT') return;
+    let current = true;
+    reassignmentApi.getCities().then((result) => {
+      if (current && result.isSuccess && result.data) setCities(result.data);
+    });
+    return () => { current = false; };
+  }, [isOpen, actionType]);
 
   if (!actionType) return null;
   const config = ACTION_CONFIGS[actionType];
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!requestDate) {
+      setErrorMessage(`يرجى إدخال ${config.dateLabel}`);
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    if (actionType === 'SECONDMENT') {
+      try {
+        const result = await reassignmentApi.submit(requestDate, targetEntity.trim(), reassignmentType, newCityKey);
+        if (!result.isSuccess || !result.data?.submitted || !result.data.assignmentId) {
+          setErrorMessage(result.error || 'تعذر إرسال طلب الندب إلى Dynamics 365.');
+          return;
+        }
+        onSuccess(`تم إرسال طلب الندب الوظيفي برقم ${result.data.assignmentId}.`);
+        onClose();
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'تعذر إرسال طلب الندب إلى Dynamics 365.');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     if (!targetEntity.trim()) {
       setErrorMessage(`يرجى إدخال ${config.typeLabel}`);
+      setIsSubmitting(false);
       return;
     }
     if (!notes.trim()) {
       setErrorMessage(`يرجى كتابة ${config.reasonLabel}`);
+      setIsSubmitting(false);
       return;
     }
-
-    setIsSubmitting(true);
-    setErrorMessage(null);
 
     const categoryMap: Record<QuickActionType, UnifiedRequestItem['category']> = {
       PERMISSION: 'PERMISSION',
@@ -150,7 +188,13 @@ export const QuickActionDialog: React.FC<QuickActionDialogProps> = ({
         )}
 
         <div className="space-y-3">
-          <div>
+          {actionType === 'SECONDMENT' && (
+            <div className="grid grid-cols-2 gap-2 bg-[#F9F9F9] border border-[#EDEBE9] p-2 text-xs">
+              <div><span className="text-[#605E5C] block">الموظف</span><strong>{employee.name}</strong></div>
+              <div><span className="text-[#605E5C] block">الوظيفة</span><strong>{employee.jobTitle}</strong></div>
+            </div>
+          )}
+          {actionType !== 'SECONDMENT' && <div>
             <label className="block text-xs font-semibold text-[#323130] mb-1">
               {config.typeLabel} <span className="text-[#A80000]">*</span>
             </label>
@@ -161,7 +205,7 @@ export const QuickActionDialog: React.FC<QuickActionDialogProps> = ({
               placeholder={`أدخل ${config.typeLabel}...`}
               className="w-full h-8 px-2 bg-white text-xs text-[#323130] border border-[#8A8886] focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] outline-none"
             />
-          </div>
+          </div>}
 
           <div>
             <label className="block text-xs font-semibold text-[#323130] mb-1">
@@ -178,7 +222,32 @@ export const QuickActionDialog: React.FC<QuickActionDialogProps> = ({
             </div>
           </div>
 
-          <div>
+          {actionType === 'SECONDMENT' && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-[#323130] mb-1">عنوان جهة الندب</label>
+                <input type="text" value={targetEntity} onChange={(e) => setTargetEntity(e.target.value)}
+                  className="w-full h-8 px-2 bg-white text-xs border border-[#8A8886] focus:border-[#0078D4] outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#323130] mb-1">نوع الندب</label>
+                <select value={reassignmentType} onChange={(e) => setReassignmentType(Number(e.target.value))}
+                  className="w-full h-8 px-2 bg-white text-xs border border-[#8A8886] focus:border-[#0078D4] outline-none">
+                  <option value={0}>ندب داخلي</option>
+                  <option value={1}>ندب خارجي</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#323130] mb-1">المدينة الجديدة (مصر)</label>
+                <select value={newCityKey} onChange={(e) => setNewCityKey(e.target.value)}
+                  className="w-full h-8 px-2 bg-white text-xs border border-[#8A8886] focus:border-[#0078D4] outline-none">
+                  <option value="">بدون مدينة محددة</option>
+                  {cities.map((city) => <option key={city.cityKey} value={city.cityKey}>{city.name}</option>)}
+                </select>
+              </div>
+            </>
+          )}
+          {actionType !== 'SECONDMENT' && <div>
             <label className="block text-xs font-semibold text-[#323130] mb-1">
               {config.reasonLabel} <span className="text-[#A80000]">*</span>
             </label>
@@ -189,7 +258,7 @@ export const QuickActionDialog: React.FC<QuickActionDialogProps> = ({
               placeholder="اكتب التفاصيل والمبررات هنا..."
               className="w-full p-2 text-xs bg-white text-[#323130] border border-[#8A8886] focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] outline-none"
             ></textarea>
-          </div>
+          </div>}
         </div>
 
         {/* Buttons */}

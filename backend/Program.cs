@@ -83,6 +83,9 @@ var d365Settings = new D365Settings
     LegalEntity = Environment.GetEnvironmentVariable("D365_LEGAL_ENTITY")
         ?? Environment.GetEnvironmentVariable("D365Settings__LegalEntity")
         ?? builder.Configuration["D365Settings:LegalEntity"] ?? string.Empty,
+    ReassignmentEndpointPath = Environment.GetEnvironmentVariable("D365_REASSIGNMENT_ENDPOINT_PATH")
+        ?? Environment.GetEnvironmentVariable("D365Settings__ReassignmentEndpointPath")
+        ?? builder.Configuration["D365Settings:ReassignmentEndpointPath"] ?? "/api/services/PAR_EssAssignmentServiceGroup/PAR_EssAssignmentService/submitAssignment",
     TimeoutSeconds = int.TryParse(Environment.GetEnvironmentVariable("D365_TIMEOUT_SECONDS"), out var timeout) ? timeout : 30
 };
 
