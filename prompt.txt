@@ -1,1 +1,0 @@
-i found the الجزاءات that on localhost:3000 is not getting any request based on mi= PAR_Penalty
